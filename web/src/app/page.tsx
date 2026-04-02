@@ -1,64 +1,134 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { useAppData } from "./_state/app-data-context";
+import type { ServiceCheckStatus } from "./_state/app-data-context";
+import { maskApiPath, maskServiceUrl } from "./_utils/access-control";
+
+const copy = {
+  title: "sub-platform",
+  description:
+    "\u8fd9\u662f\u4e00\u4e2a\u57fa\u4e8e subconverter \u7684\u8f7b\u91cf\u8ba2\u9605\u7ba1\u7406\u5e73\u53f0",
+  sourcesTitle: "\u8ba2\u9605\u6e90\u7ba1\u7406",
+  sourcesDesc:
+    "\u7ba1\u7406\u8ba2\u9605\u5730\u5740\u3001\u6807\u7b7e\u548c\u57fa\u7840\u914d\u7f6e\u3002",
+  outputsTitle: "\u8f93\u51fa\u7ba1\u7406",
+  outputsDesc:
+    "\u7ba1\u7406\u8f93\u51fa\u6a21\u677f\u3001\u683c\u5f0f\u4e0e\u53d1\u5e03\u7b56\u7565\u3002",
+  settingsTitle: "\u7cfb\u7edf\u8bbe\u7f6e",
+  settingsDesc:
+    "\u914d\u7f6e subconverter \u670d\u52a1\u5730\u5740\u4e0e\u9ed8\u8ba4\u8f93\u51fa\u53c2\u6570\u3002",
+  serviceTitle: "subconverter \u670d\u52a1\u72b6\u6001",
+  serviceAddress: "\u5f53\u524d\u670d\u52a1\u5730\u5740",
+  servicePath: "\u5f53\u524d\u57fa\u7840\u8def\u5f84 / API \u8def\u5f84",
+  lastCheckedAt: "\u6700\u8fd1\u4e00\u6b21\u68c0\u6d4b\u65f6\u95f4",
+  noCheckRecord: "\u6682\u65e0",
+  serviceDesc:
+    "\u8be5\u72b6\u6001\u7531\u7cfb\u7edf\u8bbe\u7f6e\u9875\u7684\u201c\u68c0\u6d4b\u8fde\u63a5\u201d\u7ed3\u679c\u5b9e\u65f6\u540c\u6b65\u3002",
+};
+
+const serviceStatusView: Record<
+  ServiceCheckStatus,
+  { label: string; className: string }
+> = {
+  not_checked: {
+    label: "\u672a\u68c0\u6d4b",
+    className: "bg-slate-100 text-slate-700",
+  },
+  checking: {
+    label: "\u68c0\u6d4b\u4e2d",
+    className: "bg-amber-50 text-amber-700",
+  },
+  success: {
+    label: "\u8fde\u63a5\u6210\u529f",
+    className: "bg-emerald-50 text-emerald-700",
+  },
+  failed: {
+    label: "\u8fde\u63a5\u5931\u8d25",
+    className: "bg-rose-50 text-rose-700",
+  },
+};
 
 export default function Home() {
+  const { role, serviceUrl, apiPath, serviceCheckStatus, serviceLastCheckedAt } =
+    useAppData();
+  const statusView = serviceStatusView[serviceCheckStatus];
+  const displayedServiceUrl = maskServiceUrl(serviceUrl, role);
+  const displayedApiPath = maskApiPath(apiPath, role);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-slate-100 text-slate-900">
+      <main className="mx-auto w-full max-w-5xl px-6 py-10 md:py-14">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+            {copy.title}
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-3 text-base text-slate-600 md:text-lg">
+            {copy.description}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        </section>
+
+        <section className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Link
+            href="/sources"
+            className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <p className="text-lg font-semibold text-slate-900">
+              {copy.sourcesTitle}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">{copy.sourcesDesc}</p>
+          </Link>
+          <Link
+            href="/outputs"
+            className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
           >
-            Documentation
-          </a>
-        </div>
+            <p className="text-lg font-semibold text-slate-900">
+              {copy.outputsTitle}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">{copy.outputsDesc}</p>
+          </Link>
+          <Link
+            href="/settings"
+            className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            <p className="text-lg font-semibold text-slate-900">
+              {copy.settingsTitle}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">{copy.settingsDesc}</p>
+          </Link>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold">{copy.serviceTitle}</h2>
+            <span
+              className={`rounded-full px-3 py-1 text-sm font-medium ${statusView.className}`}
+            >
+              {statusView.label}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-3">
+            <div>
+              <p className="text-slate-500">{copy.serviceAddress}</p>
+              <p className="mt-1 break-all font-medium text-slate-900">
+                {displayedServiceUrl}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">{copy.servicePath}</p>
+              <p className="mt-1 break-all font-medium text-slate-900">
+                {displayedApiPath}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">{copy.lastCheckedAt}</p>
+              <p className="mt-1 font-medium text-slate-900">
+                {serviceLastCheckedAt ?? copy.noCheckRecord}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-sm text-slate-600">{copy.serviceDesc}</p>
+        </section>
       </main>
     </div>
   );
