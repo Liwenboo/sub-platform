@@ -2,7 +2,7 @@ export type SourceStatus = "online" | "warning" | "paused";
 
 export type OutputFormatId = "clash" | "clash-meta" | "v2ray" | "sing-box";
 
-export type UserRole = "admin" | "guest";
+export type UserRole = "admin" | "viewer";
 
 export type ServiceCheckStatus =
   | "not_checked"
@@ -17,4 +17,44 @@ export type SourceItem = {
   tags: string[];
   status: SourceStatus;
   updatedAt: string;
+};
+
+export type AppDataState = {
+  role: UserRole;
+  sources: SourceItem[];
+  defaultSourceId: string | null;
+  defaultOutputFormat: OutputFormatId;
+  urlTokenEnabled: boolean;
+  serviceUrl: string;
+  apiPath: string;
+  serviceCheckStatus: ServiceCheckStatus;
+  serviceLastCheckedAt: string | null;
+  publishDomain: string;
+  httpsEnabled: boolean;
+};
+
+export type PersistedAppDataSnapshot = {
+  version?: unknown;
+  role?: unknown;
+  currentRole?: unknown;
+  userRole?: unknown;
+  sources?: unknown;
+  sourceList?: unknown;
+  subscriptions?: unknown;
+  defaultSourceId?: unknown;
+  selectedSourceId?: unknown;
+  defaultOutputFormat?: unknown;
+  outputFormat?: unknown;
+  urlTokenEnabled?: unknown;
+  enableUrlToken?: unknown;
+  serviceUrl?: unknown;
+  apiPath?: unknown;
+  serviceCheckStatus?: unknown;
+  serviceLastCheckedAt?: unknown;
+  publishDomain?: unknown;
+  httpsEnabled?: unknown;
+  service?: unknown;
+  publish?: unknown;
+  settings?: unknown;
+  output?: unknown;
 };

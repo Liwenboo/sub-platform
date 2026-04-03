@@ -1,0 +1,77 @@
+{
+  "role": "admin",
+  "sources": [
+    {
+      "id": "src-1775206694476",
+      "name": "test",
+      "url": "test",
+      "tags": [
+        "test"
+      ],
+      "status": "online",
+      "updatedAt": "2026-04-03 16:58"
+    },
+    {
+      "id": "src-001",
+      "name": "Main Source Bundle",
+      "url": "https://example.com/sub/main",
+      "tags": [
+        "default",
+        "high-speed"
+      ],
+      "status": "online",
+      "updatedAt": "2026-04-02 14:20"
+    },
+    {
+      "id": "src-002",
+      "name": "Backup Route A",
+      "url": "https://example.com/sub/backup-a",
+      "tags": [
+        "backup"
+      ],
+      "status": "online",
+      "updatedAt": "2026-04-02 09:35"
+    },
+    {
+      "id": "src-003",
+      "name": "Staging Source Set",
+      "url": "https://example.com/sub/staging",
+      "tags": [
+        "staging",
+        "dev"
+      ],
+      "status": "warning",
+      "updatedAt": "2026-04-01 22:11"
+    },
+    {
+      "id": "src-004",
+      "name": "Archive Source Set",
+      "url": "https://example.com/sub/archive",
+      "tags": [
+        "archive"
+      ],
+      "status": "paused",
+      "updatedAt": "2026-03-30 18:42"
+    },
+    {
+      "id": "src-005",
+      "name": "Public Release Set",
+      "url": "https://example.com/sub/public",
+      "tags": [
+        "release",
+        "stable"
+      ],
+      "status": "online",
+      "updatedAt": "2026-04-02 12:08"
+    }
+  ],
+  "defaultSourceId": "src-001",
+  "defaultOutputFormat": "clash",
+  "urlTokenEnabled": true,
+  "serviceUrl": "http://127.0.0.1:48888",
+  "apiPath": "/sub",
+  "serviceCheckStatus": "not_checked",
+  "serviceLastCheckedAt": null,
+  "publishDomain": "persist.example.local",
+  "httpsEnabled": true
+}

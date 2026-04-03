@@ -73,7 +73,7 @@ export function GlobalNav() {
                       onClick={() => setRole(option.value)}
                       aria-pressed={active}
                       title={`${ROLE_LABEL[option.value]}`}
-                      className={`whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
                         active
                           ? "bg-slate-900 text-white"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"

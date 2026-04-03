@@ -1,27 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAppData } from "../_state/app-data-context";
 import type {
   OutputFormatId,
 } from "../_types/app-types";
 import {
   canManageSettings as canManageSettingsRole,
-  maskApiPath,
-  maskServiceUrl,
 } from "../_utils/access-control";
 import { getServiceStatusView } from "../_utils/service-status";
 
-type FeedbackStatus = "idle" | "saved" | "reset";
+type FeedbackStatus = "idle" | "saved" | "reset" | "local_reset";
 
 const copy = {
   title: "\u7cfb\u7edf\u8bbe\u7f6e",
   subtitle:
     "\u7528\u4e8e\u914d\u7f6e subconverter \u670d\u52a1\u5730\u5740\u548c\u9ed8\u8ba4\u8f93\u51fa\u53c2\u6570",
-  guestSubtitle:
-    "\u5f53\u524d\u4e3a guest \u89c6\u89d2\uff0c\u8fd9\u91cc\u4ec5\u5c55\u793a\u53ef\u9605\u8bfb\u6982\u89c8\u4fe1\u606f\u3002",
-  guestOverviewTitle: "\u7cfb\u7edf\u53c2\u6570\u6982\u89c8",
-  guestOverviewHint:
+  viewerSubtitle:
+    "\u5f53\u524d\u4e3a viewer \u89c6\u89d2\uff0c\u8fd9\u91cc\u4ec5\u5c55\u793a\u53ef\u9605\u8bfb\u6982\u89c8\u4fe1\u606f\u3002",
+  viewerOverviewTitle: "\u7cfb\u7edf\u53c2\u6570\u6982\u89c8",
+  viewerOverviewHint:
     "\u8be6\u7ec6\u914d\u7f6e\u53ca\u7ba1\u7406\u64cd\u4f5c\u4ec5\u5bf9\u7ba1\u7406\u5458\u5f00\u653e\u3002",
   sections: {
     service: "subconverter \u670d\u52a1\u914d\u7f6e",
@@ -42,6 +41,7 @@ const copy = {
     testConnection: "\u68c0\u6d4b\u8fde\u63a5",
     save: "\u4fdd\u5b58\u8bbe\u7f6e",
     reset: "\u6062\u590d\u9ed8\u8ba4",
+    resetLocal: "\u91cd\u7f6e\u672c\u5730\u6570\u636e",
     toggle: "\u5207\u6362",
   },
   statuses: {
@@ -56,6 +56,8 @@ const copy = {
   feedback: {
     saved: "\u8bbe\u7f6e\u5df2\u4fdd\u5b58\uff08\u672c\u5730\u6a21\u62df\uff09",
     reset: "\u5df2\u6062\u590d\u9ed8\u8ba4\u8bbe\u7f6e",
+    localReset:
+      "\u5df2\u91cd\u7f6e\u672c\u5730\u6570\u636e\uff0c\u5f53\u524d\u72b6\u6001\u5df2\u56de\u5230\u521d\u59cb\u9ed8\u8ba4\u503c\u3002",
   },
 };
 
@@ -98,8 +100,10 @@ export default function SettingsPage() {
     setPublishDomain,
     setHttpsEnabled,
     resetSettingsDefaults,
+    resetLocalData,
   } = useAppData();
   const canEditSettings = canManageSettingsRole(role);
+  const router = useRouter();
 
   const [feedbackStatus, setFeedbackStatus] = useState<FeedbackStatus>("idle");
 
@@ -116,6 +120,12 @@ export default function SettingsPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!canEditSettings) {
+      router.replace("/");
+    }
+  }, [canEditSettings, router]);
 
   const handleTestConnection = () => {
     if (!canEditSettings) {
@@ -176,96 +186,32 @@ export default function SettingsPage() {
     }, 2000);
   };
 
+  const handleResetLocalData = () => {
+    if (!canEditSettings) {
+      return;
+    }
+
+    if (checkTimerRef.current) {
+      window.clearTimeout(checkTimerRef.current);
+      checkTimerRef.current = null;
+    }
+
+    resetLocalData();
+    setFeedbackStatus("local_reset");
+
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current);
+    }
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setFeedbackStatus("idle");
+      feedbackTimerRef.current = null;
+    }, 2200);
+  };
+
   const connectionStatusUI = getServiceStatusView(serviceCheckStatus);
-  const displayedServiceUrl = maskServiceUrl(serviceUrl, role);
-  const displayedApiPath = maskApiPath(apiPath, role);
-  const defaultSourceName =
-    sources.find((source) => source.id === defaultSourceId)?.name ??
-    copy.statuses.noSource;
-  const defaultOutputFormatLabel =
-    outputFormatOptions.find((format) => format.id === defaultOutputFormat)?.label ??
-    defaultOutputFormat;
 
   if (!canEditSettings) {
-    return (
-      <div className="min-h-screen bg-slate-100 text-slate-900">
-        <main className="mx-auto w-full max-w-6xl px-6 py-10 md:py-14">
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-              {copy.title}
-            </h1>
-            <p className="mt-3 text-base text-slate-600 md:text-lg">
-              {copy.guestSubtitle}
-            </p>
-          </section>
-
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
-              {copy.guestOverviewTitle}
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">{copy.guestOverviewHint}</p>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.connectStatus}</p>
-                <span
-                  className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${connectionStatusUI.className}`}
-                >
-                  {connectionStatusUI.label}
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.serviceUrl}</p>
-                <p className="mt-1 break-all font-medium text-slate-900">
-                  {displayedServiceUrl}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.apiPath}</p>
-                <p className="mt-1 break-all font-medium text-slate-900">
-                  {displayedApiPath}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.defaultFormat}</p>
-                <p className="mt-1 font-medium text-slate-900">
-                  {defaultOutputFormatLabel}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.defaultSource}</p>
-                <p className="mt-1 font-medium text-slate-900">{defaultSourceName}</p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.urlToken}</p>
-                <p className="mt-1 font-medium text-slate-900">
-                  {urlTokenEnabled ? copy.statuses.enabled : copy.statuses.disabled}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm md:col-span-2 xl:col-span-2">
-                <p className="text-slate-500">{copy.fields.publishDomain}</p>
-                <p className="mt-1 break-all font-medium text-slate-900">
-                  {publishDomain}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="text-slate-500">{copy.fields.httpsStatus}</p>
-                <p className="mt-1 font-medium text-slate-900">
-                  {httpsEnabled ? copy.statuses.enabled : copy.statuses.disabled}
-                </p>
-              </div>
-            </div>
-          </section>
-        </main>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -454,11 +400,21 @@ export default function SettingsPage() {
             >
               {copy.actions.reset}
             </button>
+            <button
+              type="button"
+              onClick={handleResetLocalData}
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
+            >
+              {copy.actions.resetLocal}
+            </button>
             {feedbackStatus === "saved" && (
               <span className="text-sm text-emerald-700">{copy.feedback.saved}</span>
             )}
             {feedbackStatus === "reset" && (
               <span className="text-sm text-slate-700">{copy.feedback.reset}</span>
+            )}
+            {feedbackStatus === "local_reset" && (
+              <span className="text-sm text-rose-700">{copy.feedback.localReset}</span>
             )}
           </div>
         </section>

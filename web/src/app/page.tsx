@@ -1,11 +1,13 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
+import { ViewerSubscriptionPage } from "./_components/viewer-subscription-page";
 import { useAppData } from "./_state/app-data-context";
 import {
   isAdminRole,
   maskApiPath,
   maskServiceUrl,
+  shouldShowSourcesNav,
   shouldShowSettingsNav,
 } from "./_utils/access-control";
 import { getServiceStatusView } from "./_utils/service-status";
@@ -30,18 +32,25 @@ const copy = {
   noCheckRecord: "\u6682\u65e0",
   serviceDesc:
     "\u8be5\u72b6\u6001\u7531\u7cfb\u7edf\u8bbe\u7f6e\u9875\u7684\u201c\u68c0\u6d4b\u8fde\u63a5\u201d\u7ed3\u679c\u5b9e\u65f6\u540c\u6b65\u3002",
-  serviceDescGuest:
-    "\u6765\u5ba2\u89c6\u89d2\u4ec5\u5c55\u793a\u8fde\u63a5\u72b6\u6001\uff0c\u8be6\u7ec6\u53c2\u6570\u7531\u7ba1\u7406\u5458\u53ef\u89c1\u3002",
 };
 
 export default function Home() {
   const { role, serviceUrl, apiPath, serviceCheckStatus, serviceLastCheckedAt } =
     useAppData();
   const isAdmin = isAdminRole(role);
+  const showSourcesEntry = shouldShowSourcesNav(role);
   const showSettingsEntry = shouldShowSettingsNav(role);
   const statusView = getServiceStatusView(serviceCheckStatus);
   const displayedServiceUrl = maskServiceUrl(serviceUrl, role);
   const displayedApiPath = maskApiPath(apiPath, role);
+  if (!isAdmin) {
+    return (
+      <ViewerSubscriptionPage
+        title="订阅首页"
+        subtitle="选择客户端格式并复制订阅链接，即可在客户端中导入使用。"
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -55,16 +64,22 @@ export default function Home() {
           </p>
         </section>
 
-        <section className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Link
-            href="/sources"
-            className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
-          >
-            <p className="text-lg font-semibold text-slate-900">
-              {copy.sourcesTitle}
-            </p>
-            <p className="mt-2 text-sm text-slate-600">{copy.sourcesDesc}</p>
-          </Link>
+        <section
+          className={`mt-6 grid gap-4 ${
+            isAdmin ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-1"
+          }`}
+        >
+          {showSourcesEntry && (
+            <Link
+              href="/sources"
+              className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <p className="text-lg font-semibold text-slate-900">
+                {copy.sourcesTitle}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">{copy.sourcesDesc}</p>
+            </Link>
+          )}
           <Link
             href="/outputs"
             className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
@@ -87,16 +102,16 @@ export default function Home() {
           )}
         </section>
 
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold">{copy.serviceTitle}</h2>
-            <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${statusView.className}`}
-            >
-              {statusView.label}
-            </span>
-          </div>
-          {isAdmin ? (
+        {isAdmin && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">{copy.serviceTitle}</h2>
+              <span
+                className={`rounded-full px-3 py-1 text-sm font-medium ${statusView.className}`}
+              >
+                {statusView.label}
+              </span>
+            </div>
             <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-3">
               <div>
                 <p className="text-slate-500">{copy.serviceAddress}</p>
@@ -117,19 +132,11 @@ export default function Home() {
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-              <p className="text-slate-500">{copy.lastCheckedAt}</p>
-              <p className="mt-1 font-medium text-slate-900">
-                {serviceLastCheckedAt ?? copy.noCheckRecord}
-              </p>
-            </div>
-          )}
-          <p className="mt-3 text-sm text-slate-600">
-            {isAdmin ? copy.serviceDesc : copy.serviceDescGuest}
-          </p>
-        </section>
+            <p className="mt-3 text-sm text-slate-600">{copy.serviceDesc}</p>
+          </section>
+        )}
       </main>
     </div>
   );
 }
+

@@ -1,8 +1,16 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAppData } from "../_state/app-data-context";
 import type { SourceStatus } from "../_types/app-types";
+import type {
+  SourceFormValues,
+  SourceImportInputMode,
+  SourceImportPreviewItem,
+  SourcePreviewType,
+} from "../_types/sources-types";
+import { createEmptySourceFormValues } from "../_data/defaults/sources-defaults";
 import {
   canManageSources,
   maskSubscriptionUrl,
@@ -13,18 +21,44 @@ import {
   getSourceStatusLabel,
 } from "../_utils/source-status";
 
-type SourceFormValues = {
-  name: string;
-  url: string;
-  tagsInput: string;
-  status: SourceStatus;
-};
-
 const copy = {
   title: "\u8ba2\u9605\u6e90\u7ba1\u7406",
   subtitle:
     "\u7528\u4e8e\u7ba1\u7406\u8ba2\u9605\u5730\u5740\u3001\u6807\u7b7e\u548c\u57fa\u7840\u914d\u7f6e",
   addButton: "\u65b0\u589e\u8ba2\u9605\u6e90",
+  importButton: "\u5bfc\u5165\u8ba2\u9605",
+  import: {
+    title: "\u5bfc\u5165\u8ba2\u9605\u6e90",
+    subtitle:
+      "\u652f\u6301\u7c98\u8d34\u8ba2\u9605\u94fe\u63a5\u6216\u539f\u59cb\u8ba2\u9605\u6587\u672c\uff0c\u751f\u6210\u9884\u89c8\u540e\u518d\u786e\u8ba4\u5bfc\u5165\u3002",
+    linkMode: "\u8ba2\u9605\u94fe\u63a5",
+    textMode: "\u539f\u59cb\u6587\u672c",
+    inputLabelLink: "\u7c98\u8d34\u8ba2\u9605\u94fe\u63a5\uff08\u53ef\u591a\u884c\uff09",
+    inputLabelText:
+      "\u7c98\u8d34 vmess / vless / \u6df7\u5408\u8ba2\u9605\u539f\u59cb\u6587\u672c",
+    inputPlaceholderLink:
+      "https://example.com/sub/a\nhttps://example.com/sub/b",
+    inputPlaceholderText:
+      "vmess://...\nvless://...\n# \u6216\u8005\u6df7\u5408\u6587\u672c\u5185\u5bb9",
+    generatePreview: "\u751f\u6210\u9884\u89c8",
+    confirmImport: "\u786e\u8ba4\u5bfc\u5165",
+    clearPreview: "\u6e05\u7a7a\u9884\u89c8",
+    close: "\u5173\u95ed",
+    previewTitle: "\u5bfc\u5165\u9884\u89c8",
+    previewCount: "\u9884\u89c8\u6761\u6570",
+    sourceType: "\u6765\u6e90\u7c7b\u578b",
+    summary: "\u539f\u59cb\u5185\u5bb9\u6458\u8981",
+    tags: "\u6807\u7b7e\u5360\u4f4d",
+    name: "\u540d\u79f0\u5360\u4f4d",
+    typeLink: "\u94fe\u63a5",
+    typeText: "\u6587\u672c",
+    invalidInput:
+      "\u672a\u8bc6\u522b\u5230\u6709\u6548\u8f93\u5165\uff0c\u8bf7\u68c0\u67e5\u5185\u5bb9\u540e\u91cd\u8bd5\u3002",
+    invalidLink:
+      "\u94fe\u63a5\u8f93\u5165\u5305\u542b\u65e0\u6548\u9879\uff0c\u8bf7\u786e\u8ba4\u6bcf\u884c\u90fd\u662f\u5408\u6cd5\u94fe\u63a5\u3002",
+    imported: "\u5df2\u5bfc\u5165",
+    importedSuffix: "\u6761\u8ba2\u9605\u6e90",
+  },
   form: {
     createTitle: "\u65b0\u589e\u8ba2\u9605\u6e90",
     editTitle: "\u7f16\u8f91\u8ba2\u9605\u6e90",
@@ -53,15 +87,6 @@ const copy = {
   deletePrompt: "\u786e\u8ba4\u5220\u9664\u8ba2\u9605\u6e90",
 };
 
-function createEmptyForm(): SourceFormValues {
-  return {
-    name: "",
-    url: "",
-    tagsInput: "",
-    status: "online",
-  };
-}
-
 function parseTags(tagsInput: string): string[] {
   return tagsInput
     .split(",")
@@ -78,31 +103,174 @@ function formatNow(): string {
   )} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
+function getSummary(text: string, maxLength = 78): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
+function splitLines(input: string): string[] {
+  return input
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isLikelyLink(input: string): boolean {
+  if (!input) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(input);
+    return parsed.protocol.length > 1;
+  } catch {
+    return /^(vmess|vless|trojan|ss|ssr|hysteria2?|tuic):\/\//i.test(input);
+  }
+}
+
+function getLinkName(link: string, index: number): string {
+  try {
+    const parsed = new URL(link);
+    return `\u5bfc\u5165\u94fe\u63a5 ${index + 1} - ${parsed.host}`;
+  } catch {
+    const matched = link.match(/^([a-zA-Z][\w+.-]*):\/\//);
+    if (matched?.[1]) {
+      return `\u5bfc\u5165\u94fe\u63a5 ${index + 1} - ${matched[1]}`;
+    }
+  }
+
+  return `\u5bfc\u5165\u94fe\u63a5 ${index + 1}`;
+}
+
+function getTextName(type: SourcePreviewType, index: number): string {
+  return type === "link"
+    ? `\u5bfc\u5165\u884c ${index + 1} - \u94fe\u63a5`
+    : `\u5bfc\u5165\u884c ${index + 1} - \u6587\u672c`;
+}
+
+function buildImportPreviews(
+  mode: SourceImportInputMode,
+  rawInput: string
+): { items: SourceImportPreviewItem[]; error: string | null } {
+  if (!rawInput.trim()) {
+    return { items: [], error: copy.import.invalidInput };
+  }
+
+  const lines = splitLines(rawInput);
+  if (lines.length === 0) {
+    return { items: [], error: copy.import.invalidInput };
+  }
+
+  if (mode === "link") {
+    const hasInvalid = lines.some((line) => !isLikelyLink(line));
+    if (hasInvalid) {
+      return { items: [], error: copy.import.invalidLink };
+    }
+
+    return {
+      items: lines.map((line, index) => ({
+        id: `preview-link-${index}-${Date.now()}`,
+        name: getLinkName(line, index),
+        sourceType: "link",
+        summary: getSummary(line),
+        tags: ["\u5bfc\u5165", "\u94fe\u63a5"],
+        raw: line,
+      })),
+      error: null,
+    };
+  }
+
+  return {
+    items: lines.slice(0, 80).map((line, index) => {
+      const sourceType: SourcePreviewType = isLikelyLink(line) ? "link" : "text";
+
+      return {
+        id: `preview-text-${index}-${Date.now()}`,
+        name: getTextName(sourceType, index),
+        sourceType,
+        summary: getSummary(line),
+        tags:
+          sourceType === "link"
+            ? ["\u5bfc\u5165", "\u94fe\u63a5"]
+            : ["\u5bfc\u5165", "\u6587\u672c"],
+        raw: line,
+      };
+    }),
+    error: null,
+  };
+}
+
 export default function SourcesPage() {
   const { role, sources, addSource, updateSource, deleteSource } = useAppData();
+  const router = useRouter();
   const canEditSources = canManageSources(role);
   const showInternalColumns = shouldShowSourceInternalColumns(role);
 
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState<SourceFormValues>(createEmptyForm);
+  const [formValues, setFormValues] = useState<SourceFormValues>(
+    createEmptySourceFormValues
+  );
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importMode, setImportMode] = useState<SourceImportInputMode>("link");
+  const [importInput, setImportInput] = useState({ link: "", text: "" });
+  const [importPreviews, setImportPreviews] = useState<SourceImportPreviewItem[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const pendingDeleteSource = useMemo(
     () => sources.find((item) => item.id === pendingDeleteId) ?? null,
     [pendingDeleteId, sources]
   );
 
+  useEffect(() => {
+    if (!canEditSources) {
+      router.replace("/");
+    }
+  }, [canEditSources, router]);
+
   const isEditing = formMode === "edit";
+
+  if (!canEditSources) {
+    return null;
+  }
 
   const openCreateForm = () => {
     if (!canEditSources) {
       return;
     }
 
+    setImportOpen(false);
+    setImportError(null);
+    setImportSuccess(null);
     setFormMode("create");
     setEditingId(null);
-    setFormValues(createEmptyForm());
+    setFormValues(createEmptySourceFormValues());
+  };
+
+  const openImportPanel = () => {
+    if (!canEditSources) {
+      return;
+    }
+
+    setFormMode(null);
+    setEditingId(null);
+    setImportOpen(true);
+    setImportError(null);
+    setImportSuccess(null);
+  };
+
+  const closeImportPanel = () => {
+    setImportOpen(false);
+    setImportPreviews([]);
+    setImportError(null);
+    setImportSuccess(null);
   };
 
   const openEditForm = (source: {
@@ -116,6 +284,9 @@ export default function SourcesPage() {
       return;
     }
 
+    setImportOpen(false);
+    setImportError(null);
+    setImportSuccess(null);
     setFormMode("edit");
     setEditingId(source.id);
     setFormValues({
@@ -129,7 +300,7 @@ export default function SourcesPage() {
   const closeForm = () => {
     setFormMode(null);
     setEditingId(null);
-    setFormValues(createEmptyForm());
+    setFormValues(createEmptySourceFormValues());
   };
 
   const onSubmitForm = (event: FormEvent<HTMLFormElement>) => {
@@ -160,6 +331,59 @@ export default function SourcesPage() {
     }
 
     closeForm();
+  };
+
+  const handleGenerateImportPreview = () => {
+    if (!canEditSources) {
+      return;
+    }
+
+    const rawInput = importMode === "link" ? importInput.link : importInput.text;
+    const result = buildImportPreviews(importMode, rawInput);
+
+    if (result.error) {
+      setImportPreviews([]);
+      setImportError(result.error);
+      setImportSuccess(null);
+      return;
+    }
+
+    setImportPreviews(result.items);
+    setImportError(null);
+    setImportSuccess(null);
+  };
+
+  const handleConfirmImport = () => {
+    if (!canEditSources) {
+      return;
+    }
+
+    if (importPreviews.length === 0) {
+      setImportError(copy.import.invalidInput);
+      setImportSuccess(null);
+      return;
+    }
+
+    const now = formatNow();
+    const nowSeed = Date.now();
+
+    importPreviews.forEach((item, index) => {
+      addSource({
+        id: `src-import-${nowSeed}-${index}`,
+        name: item.name,
+        url: item.raw,
+        tags: item.tags,
+        status: "online",
+        updatedAt: now,
+      });
+    });
+
+    setImportInput({ link: "", text: "" });
+    setImportPreviews([]);
+    setImportError(null);
+    setImportSuccess(
+      `${copy.import.imported} ${importPreviews.length} ${copy.import.importedSuffix}`
+    );
   };
 
   const requestDelete = (id: string) => {
@@ -200,16 +424,199 @@ export default function SourcesPage() {
               </p>
             </div>
             {canEditSources && (
-              <button
-                type="button"
-                onClick={openCreateForm}
-                className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
-              >
-                {copy.addButton}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openImportPanel}
+                  className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  {copy.importButton}
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreateForm}
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+                >
+                  {copy.addButton}
+                </button>
+              </div>
             )}
           </div>
         </section>
+
+        {canEditSources && importOpen && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {copy.import.title}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">{copy.import.subtitle}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeImportPanel}
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                {copy.import.close}
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setImportMode("link")}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    importMode === "link"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {copy.import.linkMode}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMode("text")}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    importMode === "text"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {copy.import.textMode}
+                </button>
+              </div>
+
+              <label className="mt-4 block space-y-2">
+                <span className="text-sm font-medium text-slate-700">
+                  {importMode === "link"
+                    ? copy.import.inputLabelLink
+                    : copy.import.inputLabelText}
+                </span>
+                <textarea
+                  rows={importMode === "link" ? 4 : 7}
+                  value={importMode === "link" ? importInput.link : importInput.text}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setImportInput((prev) =>
+                      importMode === "link"
+                        ? { ...prev, link: value }
+                        : { ...prev, text: value }
+                    );
+                  }}
+                  placeholder={
+                    importMode === "link"
+                      ? copy.import.inputPlaceholderLink
+                      : copy.import.inputPlaceholderText
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
+                />
+              </label>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleGenerateImportPreview}
+                    className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+                  >
+                    {copy.import.generatePreview}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportPreviews([]);
+                      setImportError(null);
+                      setImportSuccess(null);
+                    }}
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    {copy.import.clearPreview}
+                  </button>
+                </div>
+                <div className="text-sm">
+                  {importError && <span className="text-rose-700">{importError}</span>}
+                  {importSuccess && (
+                    <span className="text-emerald-700">{importSuccess}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {importPreviews.length > 0 && (
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="text-base font-semibold text-slate-900">
+                    {copy.import.previewTitle}
+                  </h3>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                    {copy.import.previewCount}: {importPreviews.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  {importPreviews.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs text-slate-500">{copy.import.name}</p>
+                          <p className="mt-1 font-medium text-slate-900">{item.name}</p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          {item.sourceType === "link"
+                            ? copy.import.typeLink
+                            : copy.import.typeText}
+                        </span>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-xs text-slate-500">{copy.import.sourceType}</p>
+                        <p className="mt-1 text-slate-700">
+                          {item.sourceType === "link"
+                            ? copy.import.typeLink
+                            : copy.import.typeText}
+                        </p>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-xs text-slate-500">{copy.import.summary}</p>
+                        <p className="mt-1 break-all text-slate-700">{item.summary}</p>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-xs text-slate-500">{copy.import.tags}</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {item.tags.map((tag) => (
+                            <span
+                              key={`${item.id}-${tag}`}
+                              className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 flex items-center justify-end border-t border-slate-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={handleConfirmImport}
+                    className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+                  >
+                    {copy.import.confirmImport}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {canEditSources && formMode && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -14,10 +14,10 @@ export const NAV_ITEMS: NavItem[] = [
 
 export const ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
   { value: "admin", label: "admin" },
-  { value: "guest", label: "guest" },
+  { value: "viewer", label: "viewer" },
 ];
 
 export const ROLE_LABEL: Record<UserRole, string> = {
   admin: "admin",
-  guest: "guest",
+  viewer: "viewer",
 };

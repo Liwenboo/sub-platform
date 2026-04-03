@@ -22,11 +22,23 @@ export function shouldShowSettingsNav(role: UserRole): boolean {
   return isAdminRole(role);
 }
 
+export function shouldShowSourcesNav(role: UserRole): boolean {
+  return isAdminRole(role);
+}
+
 export function shouldShowSourceInternalColumns(role: UserRole): boolean {
   return isAdminRole(role);
 }
 
 export function isNavItemVisible(role: UserRole, href: string): boolean {
+  if (!isAdminRole(role)) {
+    return href === "/";
+  }
+
+  if (href === "/sources") {
+    return shouldShowSourcesNav(role);
+  }
+
   if (href === "/settings") {
     return shouldShowSettingsNav(role);
   }
