@@ -13,11 +13,11 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export const ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
-  { value: "admin", label: "\u7ba1\u7406\u5458" },
-  { value: "viewer", label: "\u8bbf\u5ba2" },
+  { value: "admin", label: "admin" },
+  { value: "guest", label: "guest" },
 ];
 
 export const ROLE_LABEL: Record<UserRole, string> = {
-  admin: "\u7ba1\u7406\u5458",
-  viewer: "\u8bbf\u5ba2",
+  admin: "admin",
+  guest: "guest",
 };

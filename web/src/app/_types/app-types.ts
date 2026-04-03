@@ -2,7 +2,7 @@ export type SourceStatus = "online" | "warning" | "paused";
 
 export type OutputFormatId = "clash" | "clash-meta" | "v2ray" | "sing-box";
 
-export type UserRole = "admin" | "viewer";
+export type UserRole = "admin" | "guest";
 
 export type ServiceCheckStatus =
   | "not_checked"

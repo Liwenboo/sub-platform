@@ -18,10 +18,10 @@ const copy = {
   title: "\u7cfb\u7edf\u8bbe\u7f6e",
   subtitle:
     "\u7528\u4e8e\u914d\u7f6e subconverter \u670d\u52a1\u5730\u5740\u548c\u9ed8\u8ba4\u8f93\u51fa\u53c2\u6570",
-  viewerSubtitle:
-    "\u5f53\u524d\u4e3a\u8bbf\u5ba2\u89c6\u89d2\uff0c\u8fd9\u91cc\u4ec5\u5c55\u793a\u53ef\u9605\u8bfb\u6982\u89c8\u4fe1\u606f\u3002",
-  viewerOverviewTitle: "\u7cfb\u7edf\u53c2\u6570\u6982\u89c8",
-  viewerOverviewHint:
+  guestSubtitle:
+    "\u5f53\u524d\u4e3a guest \u89c6\u89d2\uff0c\u8fd9\u91cc\u4ec5\u5c55\u793a\u53ef\u9605\u8bfb\u6982\u89c8\u4fe1\u606f\u3002",
+  guestOverviewTitle: "\u7cfb\u7edf\u53c2\u6570\u6982\u89c8",
+  guestOverviewHint:
     "\u8be6\u7ec6\u914d\u7f6e\u53ca\u7ba1\u7406\u64cd\u4f5c\u4ec5\u5bf9\u7ba1\u7406\u5458\u5f00\u653e\u3002",
   sections: {
     service: "subconverter \u670d\u52a1\u914d\u7f6e",
@@ -195,15 +195,15 @@ export default function SettingsPage() {
               {copy.title}
             </h1>
             <p className="mt-3 text-base text-slate-600 md:text-lg">
-              {copy.viewerSubtitle}
+              {copy.guestSubtitle}
             </p>
           </section>
 
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
-              {copy.viewerOverviewTitle}
+              {copy.guestOverviewTitle}
             </h2>
-            <p className="mt-2 text-sm text-slate-600">{copy.viewerOverviewHint}</p>
+            <p className="mt-2 text-sm text-slate-600">{copy.guestOverviewHint}</p>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
