@@ -1,4 +1,4 @@
-import type { UserRole } from "../_state/app-data-context";
+import type { UserRole } from "../_types/app-types";
 
 const SENSITIVE_QUERY_KEYS = ["token", "key", "secret", "auth", "signature", "sig"];
 

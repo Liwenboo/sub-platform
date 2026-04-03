@@ -2,12 +2,16 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useAppData } from "../_state/app-data-context";
-import type { SourceStatus } from "../_state/app-data-context";
+import type { SourceStatus } from "../_types/app-types";
 import {
   canManageSources,
   maskSubscriptionUrl,
   shouldShowSourceInternalColumns,
 } from "../_utils/access-control";
+import {
+  getSourceStatusClass,
+  getSourceStatusLabel,
+} from "../_utils/source-status";
 
 type SourceFormValues = {
   name: string;
@@ -47,18 +51,6 @@ const copy = {
     cancelDelete: "\u53d6\u6d88",
   },
   deletePrompt: "\u786e\u8ba4\u5220\u9664\u8ba2\u9605\u6e90",
-};
-
-const statusLabel: Record<SourceStatus, string> = {
-  online: "\u6b63\u5e38",
-  warning: "\u5f02\u5e38",
-  paused: "\u6682\u505c",
-};
-
-const statusClass: Record<SourceStatus, string> = {
-  online: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  warning: "bg-amber-50 text-amber-700 ring-amber-200",
-  paused: "bg-slate-100 text-slate-700 ring-slate-200",
 };
 
 function createEmptyForm(): SourceFormValues {
@@ -281,9 +273,9 @@ export default function SourcesPage() {
                   }
                   className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
                 >
-                  <option value="online">{statusLabel.online}</option>
-                  <option value="warning">{statusLabel.warning}</option>
-                  <option value="paused">{statusLabel.paused}</option>
+                  <option value="online">{getSourceStatusLabel("online")}</option>
+                  <option value="warning">{getSourceStatusLabel("warning")}</option>
+                  <option value="paused">{getSourceStatusLabel("paused")}</option>
                 </select>
               </label>
               <div className="flex items-end gap-3">
@@ -396,9 +388,9 @@ export default function SourcesPage() {
                     {showInternalColumns && (
                       <td className="px-4 py-4">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusClass[source.status]}`}
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${getSourceStatusClass(source.status)}`}
                         >
-                          {statusLabel[source.status]}
+                          {getSourceStatusLabel(source.status)}
                         </span>
                       </td>
                     )}

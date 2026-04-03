@@ -4,13 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { useAppData } from "../_state/app-data-context";
 import type {
   OutputFormatId,
-  ServiceCheckStatus,
-} from "../_state/app-data-context";
+} from "../_types/app-types";
 import {
   canManageSettings as canManageSettingsRole,
   maskApiPath,
   maskServiceUrl,
 } from "../_utils/access-control";
+import { getServiceStatusView } from "../_utils/service-status";
 
 type FeedbackStatus = "idle" | "saved" | "reset";
 
@@ -65,37 +65,6 @@ const outputFormatOptions: Array<{ id: OutputFormatId; label: string }> = [
   { id: "v2ray", label: "V2Ray" },
   { id: "sing-box", label: "Sing-box" },
 ];
-
-function getConnectionStatusUI(status: ServiceCheckStatus): {
-  label: string;
-  className: string;
-} {
-  if (status === "checking") {
-    return {
-      label: copy.statuses.checking,
-      className: "bg-amber-50 text-amber-700",
-    };
-  }
-
-  if (status === "success") {
-    return {
-      label: copy.statuses.success,
-      className: "bg-emerald-50 text-emerald-700",
-    };
-  }
-
-  if (status === "failed") {
-    return {
-      label: copy.statuses.failed,
-      className: "bg-rose-50 text-rose-700",
-    };
-  }
-
-  return {
-    label: copy.statuses.notChecked,
-    className: "bg-slate-100 text-slate-700",
-  };
-}
 
 function formatDateTime(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -207,7 +176,7 @@ export default function SettingsPage() {
     }, 2000);
   };
 
-  const connectionStatusUI = getConnectionStatusUI(serviceCheckStatus);
+  const connectionStatusUI = getServiceStatusView(serviceCheckStatus);
   const displayedServiceUrl = maskServiceUrl(serviceUrl, role);
   const displayedApiPath = maskApiPath(apiPath, role);
   const defaultSourceName =

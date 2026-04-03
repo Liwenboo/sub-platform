@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppData } from "../_state/app-data-context";
-import type { OutputFormatId, SourceItem } from "../_state/app-data-context";
+import type { OutputFormatId, SourceItem } from "../_types/app-types";
 import {
   canManageOutputsPublish,
   maskSensitiveParamsInUrl,
 } from "../_utils/access-control";
+import { getSourceStatusLabel } from "../_utils/source-status";
 
 type CopyState = "idle" | "success" | "error";
 type PublishStatus = "unpublished" | "pending" | "confirmed";
@@ -72,12 +73,6 @@ const formatOptions: FormatOption[] = [
   { id: "v2ray", label: "V2Ray" },
   { id: "sing-box", label: "Sing-box" },
 ];
-
-const statusLabel = {
-  online: "\u6b63\u5e38",
-  warning: "\u5f02\u5e38",
-  paused: "\u6682\u505c",
-} as const;
 
 const publishStatusClass: Record<PublishStatus, string> = {
   unpublished: "bg-slate-100 text-slate-700",
@@ -387,7 +382,7 @@ export default function OutputsPage() {
                     </span>
                     <span className="mt-1 block text-xs text-slate-600">
                       {source.tags.length > 0 ? source.tags.join(" / ") : "-"} |{" "}
-                      {statusLabel[source.status]}
+                      {getSourceStatusLabel(source.status)}
                     </span>
                   </span>
                 </label>

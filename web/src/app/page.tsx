@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useAppData } from "./_state/app-data-context";
-import type { ServiceCheckStatus } from "./_state/app-data-context";
 import { maskApiPath, maskServiceUrl } from "./_utils/access-control";
+import { getServiceStatusView } from "./_utils/service-status";
 
 const copy = {
   title: "sub-platform",
@@ -27,32 +27,10 @@ const copy = {
     "\u8be5\u72b6\u6001\u7531\u7cfb\u7edf\u8bbe\u7f6e\u9875\u7684\u201c\u68c0\u6d4b\u8fde\u63a5\u201d\u7ed3\u679c\u5b9e\u65f6\u540c\u6b65\u3002",
 };
 
-const serviceStatusView: Record<
-  ServiceCheckStatus,
-  { label: string; className: string }
-> = {
-  not_checked: {
-    label: "\u672a\u68c0\u6d4b",
-    className: "bg-slate-100 text-slate-700",
-  },
-  checking: {
-    label: "\u68c0\u6d4b\u4e2d",
-    className: "bg-amber-50 text-amber-700",
-  },
-  success: {
-    label: "\u8fde\u63a5\u6210\u529f",
-    className: "bg-emerald-50 text-emerald-700",
-  },
-  failed: {
-    label: "\u8fde\u63a5\u5931\u8d25",
-    className: "bg-rose-50 text-rose-700",
-  },
-};
-
 export default function Home() {
   const { role, serviceUrl, apiPath, serviceCheckStatus, serviceLastCheckedAt } =
     useAppData();
-  const statusView = serviceStatusView[serviceCheckStatus];
+  const statusView = getServiceStatusView(serviceCheckStatus);
   const displayedServiceUrl = maskServiceUrl(serviceUrl, role);
   const displayedApiPath = maskApiPath(apiPath, role);
 
