@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useAppData } from "../_state/app-data-context";
-import { NAV_ITEMS, ROLE_LABEL, ROLE_OPTIONS } from "../_config/navigation";
+import { NAV_ITEMS } from "../_config/navigation";
 import { isNavItemVisible } from "../_utils/access-control";
 
 function isActivePath(pathname: string, href: string): boolean {
@@ -16,8 +18,27 @@ function isActivePath(pathname: string, href: string): boolean {
 
 export function GlobalNav() {
   const pathname = usePathname();
-  const { role, setRole } = useAppData();
+  const router = useRouter();
+  const { role } = useAppData();
+  const [logoutLoading, setLogoutLoading] = useState(false);
   const visibleNavItems = NAV_ITEMS.filter((item) => isNavItemVisible(role, item.href));
+  const loginHref = `/login?next=${encodeURIComponent(pathname || "/")}`;
+
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch {
+      // Ignore network errors and continue with local refresh.
+    } finally {
+      setLogoutLoading(false);
+      router.replace("/");
+      router.refresh();
+    }
+  };
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100">
@@ -62,27 +83,33 @@ export function GlobalNav() {
 
               <div className="h-8 w-px bg-slate-200" aria-hidden />
 
-              <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-                {ROLE_OPTIONS.map((option) => {
-                  const active = role === option.value;
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setRole(option.value)}
-                      aria-pressed={active}
-                      title={`${ROLE_LABEL[option.value]}`}
-                      className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
-                        active
-                          ? "bg-slate-900 text-white"
-                          : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  className={`rounded-lg border px-3 py-1 text-xs font-medium ${
+                    role === "admin"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                >
+                  {role}
+                </span>
+                {role === "admin" ? (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={logoutLoading}
+                    className="whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {logoutLoading ? "退出中..." : "退出登录"}
+                  </button>
+                ) : (
+                  <Link
+                    href={loginHref}
+                    className="whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-slate-700"
+                  >
+                    管理员登录
+                  </Link>
+                )}
               </div>
             </div>
           </div>

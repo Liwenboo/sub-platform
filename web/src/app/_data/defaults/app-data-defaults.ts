@@ -5,7 +5,7 @@ import type {
   UserRole,
 } from "../../_types/app-types";
 
-export const APP_DEFAULT_ROLE: UserRole = "admin";
+export const APP_DEFAULT_ROLE: UserRole = "viewer";
 export const APP_DEFAULT_SOURCE_STATUS = "online" as const;
 export const APP_DEFAULT_SOURCE_UPDATED_AT = "2026-04-02 00:00";
 

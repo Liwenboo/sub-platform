@@ -1,33 +1,24 @@
-import type { RemoteSetRoleRequestDto } from "../../_data/repositories/remote-app-data-api-types";
 import {
-  parseJsonBody,
   errorResponse,
-  mutationResultToResponse,
   successResponse,
 } from "../_lib/mock-api-response";
-import { mockAppDataStore } from "../../../server/mock-data/app-data-store";
-import { validateSetRoleRequest } from "../../../server/mock-data/app-data-validation";
+import { getRequestRole, requireViewerReadAccess } from "../_lib/mock-api-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return successResponse(await mockAppDataStore.getRole());
+  const accessFailureResponse = await requireViewerReadAccess();
+  if (accessFailureResponse) {
+    return accessFailureResponse;
+  }
+
+  return successResponse({ role: await getRequestRole() });
 }
 
-export async function PATCH(request: Request) {
-  const body = await parseJsonBody<RemoteSetRoleRequestDto>(request);
-
-  if (!body?.role) {
-    return errorResponse(400, "invalid_request", 'Request body must include "role".');
-  }
-
-  const validationResult = validateSetRoleRequest(body);
-
-  if (!validationResult.ok) {
-    return mutationResultToResponse(validationResult);
-  }
-
-  return mutationResultToResponse(
-    await mockAppDataStore.setRole(validationResult.data)
+export async function PATCH() {
+  return errorResponse(
+    405,
+    "role_switch_disabled",
+    "Role switching via API is disabled. Use /api/auth/login or /api/auth/logout."
   );
 }

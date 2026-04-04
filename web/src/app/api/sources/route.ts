@@ -5,6 +5,7 @@ import {
   mutationResultToResponse,
   successResponse,
 } from "../_lib/mock-api-response";
+import { requireAdminForMutation, requireViewerReadAccess } from "../_lib/mock-api-auth";
 import { mockAppDataStore } from "../../../server/mock-data/app-data-store";
 import { readStoredAppDataState } from "../../../server/mock-data/app-data-storage";
 import { validateCreateSourceRequest } from "../../../server/mock-data/app-data-validation";
@@ -12,10 +13,20 @@ import { validateCreateSourceRequest } from "../../../server/mock-data/app-data-
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const accessFailureResponse = await requireViewerReadAccess();
+  if (accessFailureResponse) {
+    return accessFailureResponse;
+  }
+
   return successResponse(await mockAppDataStore.listSources());
 }
 
 export async function POST(request: Request) {
+  const authFailureResponse = await requireAdminForMutation();
+  if (authFailureResponse) {
+    return authFailureResponse;
+  }
+
   const body = await parseJsonBody<RemoteCreateSourceRequestDto>(request);
 
   if (!body?.source) {

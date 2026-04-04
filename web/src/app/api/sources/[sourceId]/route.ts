@@ -4,6 +4,7 @@ import {
   errorResponse,
   mutationResultToResponse,
 } from "../../_lib/mock-api-response";
+import { requireAdminForMutation } from "../../_lib/mock-api-auth";
 import { mockAppDataStore } from "../../../../server/mock-data/app-data-store";
 import { validateUpdateSourceRequest } from "../../../../server/mock-data/app-data-validation";
 
@@ -16,6 +17,11 @@ type SourceRouteContext = {
 };
 
 export async function PATCH(request: Request, context: SourceRouteContext) {
+  const authFailureResponse = await requireAdminForMutation();
+  if (authFailureResponse) {
+    return authFailureResponse;
+  }
+
   const { sourceId } = await context.params;
   const body = await parseJsonBody<RemoteUpdateSourceRequestDto>(request);
 
@@ -35,6 +41,11 @@ export async function PATCH(request: Request, context: SourceRouteContext) {
 }
 
 export async function DELETE(_request: Request, context: SourceRouteContext) {
+  const authFailureResponse = await requireAdminForMutation();
+  if (authFailureResponse) {
+    return authFailureResponse;
+  }
+
   const { sourceId } = await context.params;
   return mutationResultToResponse(await mockAppDataStore.removeSource(sourceId));
 }
