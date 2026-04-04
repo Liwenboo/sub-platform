@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useAppData } from "../_state/app-data-context";
 
 type LoginResponse = {
   success: boolean;
@@ -16,6 +17,16 @@ type LoginResponse = {
   } | null;
 };
 
+type SessionResponse = {
+  success: boolean;
+  data: {
+    authenticated: boolean;
+    role: "admin" | "viewer";
+    authConfigReady: boolean;
+    authConfigIssues: string[];
+  } | null;
+};
+
 function normalizeNextPath(input: string | null): string {
   if (!input || !input.startsWith("/") || input.startsWith("//")) {
     return "/";
@@ -26,12 +37,26 @@ function normalizeNextPath(input: string | null): string {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refreshAppData } = useAppData();
   const [nextPath, setNextPath] = useState("/");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [configWarning, setConfigWarning] = useState<string | null>(null);
+
+  const fetchSession = useCallback(async (): Promise<SessionResponse | null> => {
+    try {
+      const response = await fetch("/api/auth/session", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      return (await response.json()) as SessionResponse;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -43,22 +68,13 @@ export default function LoginPage() {
 
     async function checkSession() {
       try {
-        const response = await fetch("/api/auth/session", {
-          method: "GET",
-          cache: "no-store",
-        });
-
-        const payload = (await response.json()) as {
-          success: boolean;
-          data: {
-            authenticated: boolean;
-            role: "admin" | "viewer";
-            authConfigReady: boolean;
-            authConfigIssues: string[];
-          } | null;
-        };
+        const payload = await fetchSession();
 
         if (!active) {
+          return;
+        }
+
+        if (!payload) {
           return;
         }
 
@@ -74,6 +90,7 @@ export default function LoginPage() {
         }
 
         if (payload.success && payload.data?.role === "admin") {
+          await refreshAppData();
           router.replace(nextPath);
           router.refresh();
         }
@@ -87,7 +104,7 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
-  }, [nextPath, router]);
+  }, [fetchSession, nextPath, refreshAppData, router]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -113,6 +130,17 @@ export default function LoginPage() {
         return;
       }
 
+      const sessionPayload = await fetchSession();
+      if (
+        !sessionPayload?.success ||
+        !sessionPayload.data?.authenticated ||
+        sessionPayload.data.role !== "admin"
+      ) {
+        setErrorMessage("登录状态同步失败，请重试。");
+        return;
+      }
+
+      await refreshAppData();
       router.replace(nextPath);
       router.refresh();
     } catch {

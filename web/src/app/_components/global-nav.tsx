@@ -19,7 +19,7 @@ function isActivePath(pathname: string, href: string): boolean {
 export function GlobalNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { role } = useAppData();
+  const { role, refreshAppData } = useAppData();
   const [logoutLoading, setLogoutLoading] = useState(false);
   const visibleNavItems = NAV_ITEMS.filter((item) => isNavItemVisible(role, item.href));
   const loginHref = `/login?next=${encodeURIComponent(pathname || "/")}`;
@@ -34,6 +34,11 @@ export function GlobalNav() {
     } catch {
       // Ignore network errors and continue with local refresh.
     } finally {
+      try {
+        await refreshAppData();
+      } catch {
+        // Ignore refresh failures and continue navigation fallback.
+      }
       setLogoutLoading(false);
       router.replace("/");
       router.refresh();
@@ -84,15 +89,26 @@ export function GlobalNav() {
               <div className="h-8 w-px bg-slate-200" aria-hidden />
 
               <div className="flex shrink-0 items-center gap-2">
-                <span
-                  className={`rounded-lg border px-3 py-1 text-xs font-medium ${
-                    role === "admin"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-slate-200 bg-slate-50 text-slate-600"
-                  }`}
-                >
-                  {role}
-                </span>
+                <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  <span
+                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                      role === "viewer"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    viewer
+                  </span>
+                  <span
+                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                      role === "admin"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    admin
+                  </span>
+                </div>
                 {role === "admin" ? (
                   <button
                     type="button"

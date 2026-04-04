@@ -35,6 +35,7 @@ export type {
 } from "../_types/app-types";
 
 type AppDataContextValue = AppDataState & {
+  refreshAppData: () => Promise<void>;
   setRole: (role: UserRole) => void;
   addSource: (source: SourceItem) => void;
   updateSource: (id: string, source: Omit<SourceItem, "id">) => void;
@@ -100,33 +101,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [logRepositoryError, resolveRepositoryCall]
   );
 
+  const refreshAppData = useCallback(async () => {
+    await runStateReplacement(() =>
+      appDataRepository.loadAppData({
+        fallbackState: stateRef.current,
+      })
+    );
+  }, [runStateReplacement]);
+
   useEffect(() => {
-    let active = true;
-
-    async function hydrateFromRepository() {
-      const result = await resolveRepositoryCall(
-        appDataRepository.loadAppData({
-          fallbackState: createDefaultAppDataState(),
-        })
-      );
-
-      if (!active) {
-        return;
-      }
-
-      logRepositoryError(result.error);
-      const nextState = normalizeAppDataState(result.state);
-
-      stateRef.current = nextState;
-      setState(nextState);
-    }
-
-    void hydrateFromRepository();
-
-    return () => {
-      active = false;
-    };
-  }, [logRepositoryError, resolveRepositoryCall]);
+    void refreshAppData();
+  }, [refreshAppData]);
 
   const setRole = useCallback((role: UserRole) => {
     void runStateReplacement(
@@ -248,6 +233,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const contextValue = useMemo<AppDataContextValue>(
     () => ({
       ...normalizedState,
+      refreshAppData,
       setRole,
       addSource,
       updateSource,
@@ -266,6 +252,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       normalizedState,
+      refreshAppData,
       setRole,
       addSource,
       updateSource,
