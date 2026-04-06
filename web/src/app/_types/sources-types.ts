@@ -1,4 +1,8 @@
-import type { SourceStatus } from "./app-types";
+import type {
+  SourceProtocol,
+  SourceStatus,
+  SourceType,
+} from "./app-types";
 
 export type SourceFormValues = {
   name: string;
@@ -8,13 +12,15 @@ export type SourceFormValues = {
 };
 
 export type SourceImportInputMode = "link" | "text";
-export type SourcePreviewType = "link" | "text";
+export type SourcePreviewType = SourceType;
 
 export type SourceImportPreviewItem = {
   id: string;
   name: string;
   sourceType: SourcePreviewType;
+  sourceProtocol: SourceProtocol;
   summary: string;
   tags: string[];
-  raw: string;
+  url: string;
+  content: string | null;
 };

@@ -6,13 +6,19 @@ import {
   APP_SETTINGS_DEFAULTS,
   cloneDefaultSources,
 } from "../defaults/app-data-defaults";
+import {
+  isHttpSubscriptionUrl,
+  resolveSourceProtocol,
+} from "./source-entry-service";
 import type {
   AppDataState,
   OutputFormatId,
   PersistedAppDataSnapshot,
   ServiceCheckStatus,
+  SourceProtocol,
   SourceItem,
   SourceStatus,
+  SourceType,
   UserRole,
 } from "../../_types/app-types";
 
@@ -83,6 +89,32 @@ function normalizeSourceStatus(value: unknown): SourceStatus | null {
   return sourceStatusValues.includes(value as SourceStatus)
     ? (value as SourceStatus)
     : null;
+}
+
+function normalizeSourceType(value: unknown): SourceType | null {
+  if (value === "remote" || value === "raw") {
+    return value;
+  }
+
+  return null;
+}
+
+function normalizeSourceProtocol(value: unknown): SourceProtocol | null {
+  if (
+    value === "http" ||
+    value === "https" ||
+    value === "vmess" ||
+    value === "vless" ||
+    value === "trojan" ||
+    value === "ss" ||
+    value === "socks" ||
+    value === "mixed" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function normalizeServiceCheckStatus(value: unknown): ServiceCheckStatus | null {
@@ -177,7 +209,23 @@ function isNormalizedSourceItem(value: unknown): value is SourceItem {
     return false;
   }
 
+  if (!normalizeSourceType(value.sourceType)) {
+    return false;
+  }
+
+  if (!normalizeSourceProtocol(value.sourceProtocol)) {
+    return false;
+  }
+
   if (typeof value.url !== "string" || value.url.trim().length === 0) {
+    return false;
+  }
+
+  if (
+    value.content !== null &&
+    value.content !== undefined &&
+    (typeof value.content !== "string" || value.content.trim().length === 0)
+  ) {
     return false;
   }
 
@@ -213,11 +261,31 @@ function sanitizeSourceItem(value: unknown, index: number): SourceItem | null {
       pickFromRecord(value, ["name", "sourceName", "title"]),
       `导入源 ${index + 1}`
     ) || `导入源 ${index + 1}`;
+  const rawSourceValue = normalizeNonEmptyString(
+    pickFromRecord(value, ["url", "sourceUrl", "subscriptionUrl", "raw", "content"]),
+    `https://example.com/sub/legacy-${index + 1}`
+  );
+  const sourceType =
+    normalizeSourceType(pickFromRecord(value, ["sourceType", "type"])) ??
+    (isHttpSubscriptionUrl(rawSourceValue) ? "remote" : "raw");
+  const content =
+    sourceType === "raw"
+      ? normalizeNonEmptyString(
+          pickFromRecord(value, ["content", "raw", "url", "sourceUrl"]),
+          rawSourceValue
+        )
+      : null;
   const url =
-    normalizeNonEmptyString(
-      pickFromRecord(value, ["url", "sourceUrl", "subscriptionUrl", "raw"]),
-      `https://example.com/sub/legacy-${index + 1}`
-    ) || `https://example.com/sub/legacy-${index + 1}`;
+    sourceType === "raw"
+      ? content ?? rawSourceValue
+      : normalizeNonEmptyString(
+          pickFromRecord(value, ["url", "sourceUrl", "subscriptionUrl"]),
+          rawSourceValue
+        ) || rawSourceValue;
+  const sourceProtocol =
+    normalizeSourceProtocol(pickFromRecord(value, ["sourceProtocol", "protocol"])) ??
+    resolveSourceProtocol(sourceType === "raw" ? content ?? url : url) ??
+    (sourceType === "remote" ? "https" : "unknown");
   const status =
     normalizeSourceStatus(pickFromRecord(value, ["status", "state"])) ??
     APP_DEFAULT_SOURCE_STATUS;
@@ -231,7 +299,10 @@ function sanitizeSourceItem(value: unknown, index: number): SourceItem | null {
   return {
     id,
     name,
+    sourceType,
+    sourceProtocol,
     url,
+    content,
     status,
     updatedAt,
     tags,

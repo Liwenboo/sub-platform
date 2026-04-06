@@ -32,7 +32,10 @@ function mapSourceDtoToDomain(source: RemoteSourceDto): SourceItem {
   return {
     id: source.id,
     name: source.name,
+    sourceType: source.sourceType,
+    sourceProtocol: source.sourceProtocol,
     url: source.url,
+    content: source.content,
     tags: [...source.tags],
     status: source.status,
     updatedAt: source.updatedAt,
@@ -43,7 +46,10 @@ function mapSourceToDto(source: SourceItem): RemoteSourceDto {
   return {
     id: source.id,
     name: source.name,
+    sourceType: source.sourceType,
+    sourceProtocol: source.sourceProtocol,
     url: source.url,
+    content: source.content,
     tags: [...source.tags],
     status: source.status,
     updatedAt: source.updatedAt,
@@ -150,7 +156,10 @@ export function mapCreateSourceRequestToDto(
   return {
     source: {
       name: request.source.name,
+      sourceType: request.source.sourceType,
+      sourceProtocol: request.source.sourceProtocol,
       url: request.source.url,
+      content: request.source.content,
       tags: [...request.source.tags],
       status: request.source.status,
       updatedAt: request.source.updatedAt,
@@ -166,7 +175,10 @@ export function mapUpdateSourceRequestToDto(
     sourceId: request.sourceId,
     source: {
       name: request.source.name,
+      sourceType: request.source.sourceType,
+      sourceProtocol: request.source.sourceProtocol,
       url: request.source.url,
+      content: request.source.content,
       tags: [...request.source.tags],
       status: request.source.status,
       updatedAt: request.source.updatedAt,

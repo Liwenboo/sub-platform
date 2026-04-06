@@ -3,14 +3,20 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppData } from "../_state/app-data-context";
-import type { SourceStatus } from "../_types/app-types";
+import type { SourceItem, SourceStatus, SourceType } from "../_types/app-types";
 import type {
   SourceFormValues,
   SourceImportInputMode,
   SourceImportPreviewItem,
-  SourcePreviewType,
 } from "../_types/sources-types";
 import { createEmptySourceFormValues } from "../_data/defaults/sources-defaults";
+import {
+  getSourceDisplayValue,
+  getSourceProtocolLabel,
+  getSourceTypeLabel,
+  isHttpSubscriptionUrl,
+  parseSourceInput,
+} from "../_data/services/source-entry-service";
 import {
   canManageSources,
   maskSubscriptionUrl,
@@ -47,15 +53,18 @@ const copy = {
     previewTitle: "\u5bfc\u5165\u9884\u89c8",
     previewCount: "\u9884\u89c8\u6761\u6570",
     sourceType: "\u6765\u6e90\u7c7b\u578b",
+    protocol: "\u534f\u8bae\u7c7b\u578b",
     summary: "\u539f\u59cb\u5185\u5bb9\u6458\u8981",
     tags: "\u6807\u7b7e\u5360\u4f4d",
     name: "\u540d\u79f0\u5360\u4f4d",
-    typeLink: "\u94fe\u63a5",
-    typeText: "\u6587\u672c",
+    typeRemote: "\u8fdc\u7a0b\u8ba2\u9605\u6e90",
+    typeRaw: "\u539f\u59cb\u8282\u70b9",
     invalidInput:
       "\u672a\u8bc6\u522b\u5230\u6709\u6548\u8f93\u5165\uff0c\u8bf7\u68c0\u67e5\u5185\u5bb9\u540e\u91cd\u8bd5\u3002",
     invalidLink:
-      "\u94fe\u63a5\u8f93\u5165\u5305\u542b\u65e0\u6548\u9879\uff0c\u8bf7\u786e\u8ba4\u6bcf\u884c\u90fd\u662f\u5408\u6cd5\u94fe\u63a5\u3002",
+      "\u8ba2\u9605\u94fe\u63a5\u6a21\u5f0f\u4ec5\u652f\u6301 http/https URL\uff0c\u8bf7\u786e\u8ba4\u6bcf\u884c\u90fd\u662f\u5408\u6cd5\u8ba2\u9605\u5730\u5740\u3002",
+    invalidRawLine:
+      "\u539f\u59cb\u6587\u672c\u5305\u542b\u4e0d\u53d7\u652f\u6301\u7684\u6761\u76ee\uff0c\u4ec5\u652f\u6301 vmess://, vless://, trojan://, ss://, socks:// \u53ca http/https URL\u3002",
     imported: "\u5df2\u5bfc\u5165",
     importedSuffix: "\u6761\u8ba2\u9605\u6e90",
   },
@@ -63,7 +72,8 @@ const copy = {
     createTitle: "\u65b0\u589e\u8ba2\u9605\u6e90",
     editTitle: "\u7f16\u8f91\u8ba2\u9605\u6e90",
     name: "\u540d\u79f0",
-    url: "\u8ba2\u9605\u5730\u5740",
+    remoteUrl: "\u8ba2\u9605\u5730\u5740",
+    rawContent: "\u539f\u59cb\u8282\u70b9\u5185\u5bb9",
     tags: "\u6807\u7b7e\uff08\u9017\u53f7\u5206\u9694\uff09",
     tagsPlaceholder: "\u9ed8\u8ba4, \u9ad8\u901f",
     status: "\u72b6\u6001",
@@ -72,7 +82,7 @@ const copy = {
   },
   tableHeaders: {
     name: "\u540d\u79f0",
-    url: "\u8ba2\u9605\u5730\u5740",
+    url: "\u5730\u5740 / \u8282\u70b9\u5185\u5bb9",
     tags: "\u6807\u7b7e",
     status: "\u72b6\u6001",
     updatedAt: "\u6700\u8fd1\u66f4\u65b0\u65f6\u95f4",
@@ -121,37 +131,82 @@ function splitLines(input: string): string[] {
     .filter(Boolean);
 }
 
-function isLikelyLink(input: string): boolean {
-  if (!input) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(input);
-    return parsed.protocol.length > 1;
-  } catch {
-    return /^(vmess|vless|trojan|ss|ssr|hysteria2?|tuic):\/\//i.test(input);
-  }
-}
-
 function getLinkName(link: string, index: number): string {
   try {
     const parsed = new URL(link);
     return `\u5bfc\u5165\u94fe\u63a5 ${index + 1} - ${parsed.host}`;
   } catch {
-    const matched = link.match(/^([a-zA-Z][\w+.-]*):\/\//);
-    if (matched?.[1]) {
-      return `\u5bfc\u5165\u94fe\u63a5 ${index + 1} - ${matched[1]}`;
-    }
+    return `\u5bfc\u5165\u94fe\u63a5 ${index + 1}`;
   }
-
-  return `\u5bfc\u5165\u94fe\u63a5 ${index + 1}`;
 }
 
-function getTextName(type: SourcePreviewType, index: number): string {
-  return type === "link"
-    ? `\u5bfc\u5165\u884c ${index + 1} - \u94fe\u63a5`
-    : `\u5bfc\u5165\u884c ${index + 1} - \u6587\u672c`;
+function getRawSourceName(protocolLabel: string, index: number): string {
+  return `\u5bfc\u5165\u8282\u70b9 ${index + 1} - ${protocolLabel}`;
+}
+
+function getSourceFieldLabel(sourceType: SourceType): string {
+  return sourceType === "raw" ? copy.form.rawContent : copy.form.remoteUrl;
+}
+
+function getImportSourceTypeLabel(sourceType: SourceType): string {
+  return sourceType === "remote" ? copy.import.typeRemote : copy.import.typeRaw;
+}
+
+function getPreviewTags(item: Pick<SourceImportPreviewItem, "sourceType" | "sourceProtocol">): string[] {
+  const sourceTypeLabel = item.sourceType === "remote" ? "\u8fdc\u7a0b\u8ba2\u9605" : "\u539f\u59cb\u8282\u70b9";
+  return ["\u5bfc\u5165", sourceTypeLabel, getSourceProtocolLabel(item.sourceProtocol)];
+}
+
+function createPreviewItem(
+  parsedInput: NonNullable<ReturnType<typeof parseSourceInput>>,
+  index: number,
+  prefix: string
+): SourceImportPreviewItem {
+  const protocolLabel = getSourceProtocolLabel(parsedInput.sourceProtocol);
+
+  return {
+    id: `${prefix}-${index}-${Date.now()}`,
+    name:
+      parsedInput.sourceType === "remote"
+        ? getLinkName(parsedInput.url, index)
+        : getRawSourceName(protocolLabel, index),
+    sourceType: parsedInput.sourceType,
+    sourceProtocol: parsedInput.sourceProtocol,
+    summary: getSummary(
+      getSourceDisplayValue({
+        sourceType: parsedInput.sourceType,
+        url: parsedInput.url,
+        content: parsedInput.content,
+      })
+    ),
+    tags: getPreviewTags(parsedInput),
+    url: parsedInput.url,
+    content: parsedInput.content,
+  };
+}
+
+function getImportParseError(index: number): string {
+  return `第 ${index + 1} 行内容无效。${copy.import.invalidRawLine}`;
+}
+
+function getSupportedFormSource(
+  sourceType: SourceType,
+  inputValue: string
+): ReturnType<typeof parseSourceInput> {
+  const parsedInput = parseSourceInput(inputValue);
+  if (!parsedInput) {
+    return null;
+  }
+
+  if (sourceType === "remote" && parsedInput.sourceType !== "remote") {
+    return null;
+  }
+
+  if (sourceType === "raw" && parsedInput.sourceType !== "raw") {
+    return null;
+  }
+
+  return parsedInput;
 }
 
 function buildImportPreviews(
@@ -168,40 +223,40 @@ function buildImportPreviews(
   }
 
   if (mode === "link") {
-    const hasInvalid = lines.some((line) => !isLikelyLink(line));
+    const hasInvalid = lines.some((line) => !isHttpSubscriptionUrl(line));
     if (hasInvalid) {
       return { items: [], error: copy.import.invalidLink };
     }
 
     return {
-      items: lines.map((line, index) => ({
-        id: `preview-link-${index}-${Date.now()}`,
-        name: getLinkName(line, index),
-        sourceType: "link",
-        summary: getSummary(line),
-        tags: ["\u5bfc\u5165", "\u94fe\u63a5"],
-        raw: line,
-      })),
+      items: lines.map((line, index) => {
+        const parsedInput = parseSourceInput(line);
+        if (!parsedInput) {
+          throw new Error(copy.import.invalidLink);
+        }
+
+        return createPreviewItem(parsedInput, index, "preview-link");
+      }),
       error: null,
     };
   }
 
-  return {
-    items: lines.slice(0, 80).map((line, index) => {
-      const sourceType: SourcePreviewType = isLikelyLink(line) ? "link" : "text";
+  const items: SourceImportPreviewItem[] = [];
 
+  for (const [index, line] of lines.slice(0, 80).entries()) {
+    const parsedInput = parseSourceInput(line);
+    if (!parsedInput) {
       return {
-        id: `preview-text-${index}-${Date.now()}`,
-        name: getTextName(sourceType, index),
-        sourceType,
-        summary: getSummary(line),
-        tags:
-          sourceType === "link"
-            ? ["\u5bfc\u5165", "\u94fe\u63a5"]
-            : ["\u5bfc\u5165", "\u6587\u672c"],
-        raw: line,
+        items: [],
+        error: getImportParseError(index),
       };
-    }),
+    }
+
+    items.push(createPreviewItem(parsedInput, index, "preview-text"));
+  }
+
+  return {
+    items,
     error: null,
   };
 }
@@ -217,6 +272,7 @@ export default function SourcesPage() {
   const [formValues, setFormValues] = useState<SourceFormValues>(
     createEmptySourceFormValues
   );
+  const [formSourceType, setFormSourceType] = useState<SourceType>("remote");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const [importOpen, setImportOpen] = useState(false);
@@ -260,6 +316,7 @@ export default function SourcesPage() {
     setFormError(null);
     setFormMode("create");
     setEditingId(null);
+    setFormSourceType("remote");
     setFormValues(createEmptySourceFormValues());
   };
 
@@ -283,13 +340,7 @@ export default function SourcesPage() {
     setImportSuccess(null);
   };
 
-  const openEditForm = (source: {
-    id: string;
-    name: string;
-    url: string;
-    tags: string[];
-    status: SourceStatus;
-  }) => {
+  const openEditForm = (source: SourceItem) => {
     if (!canEditSources) {
       return;
     }
@@ -300,9 +351,10 @@ export default function SourcesPage() {
     setFormError(null);
     setFormMode("edit");
     setEditingId(source.id);
+    setFormSourceType(source.sourceType);
     setFormValues({
       name: source.name,
-      url: source.url,
+      url: getSourceDisplayValue(source),
       tagsInput: source.tags.join(", "),
       status: source.status,
     });
@@ -311,6 +363,7 @@ export default function SourcesPage() {
   const closeForm = () => {
     setFormMode(null);
     setEditingId(null);
+    setFormSourceType("remote");
     setFormValues(createEmptySourceFormValues());
     setFormError(null);
   };
@@ -323,16 +376,34 @@ export default function SourcesPage() {
 
     setFormError(null);
 
+    const trimmedSourceValue = formValues.url.trim();
+    const parsedSource = getSupportedFormSource(formSourceType, trimmedSourceValue);
     const nextItem = {
       name: formValues.name.trim(),
-      url: formValues.url.trim(),
+      sourceType: parsedSource?.sourceType ?? formSourceType,
+      sourceProtocol: parsedSource?.sourceProtocol ?? "unknown",
+      url: parsedSource?.url ?? trimmedSourceValue,
+      content: parsedSource?.content ?? null,
       tags: parseTags(formValues.tagsInput),
       status: formValues.status,
       updatedAt: formatNow(),
     };
 
-    if (!nextItem.name || !nextItem.url) {
-      setFormError("请填写名称和订阅地址。");
+    if (!nextItem.name || !trimmedSourceValue) {
+      setFormError(
+        formSourceType === "raw"
+          ? "请填写名称和原始节点内容。"
+          : "请填写名称和订阅地址。"
+      );
+      return;
+    }
+
+    if (!parsedSource) {
+      setFormError(
+        formSourceType === "raw"
+          ? "原始节点内容必须以 vmess://、vless://、trojan://、ss:// 或 socks:// 开头。"
+          : "远程订阅源地址必须是有效的 http/https URL。"
+      );
       return;
     }
 
@@ -396,7 +467,10 @@ export default function SourcesPage() {
       const result = await addSource({
         id: `src-import-${nowSeed}-${index}`,
         name: item.name,
-        url: item.raw,
+        sourceType: item.sourceType,
+        sourceProtocol: item.sourceProtocol,
+        url: item.url,
+        content: item.content,
         tags: item.tags,
         status: "online",
         updatedAt: now,
@@ -601,7 +675,7 @@ export default function SourcesPage() {
                     {copy.import.previewTitle}
                   </h3>
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                    {copy.import.previewCount}: {importPreviews.length}
+                  {copy.import.previewCount}: {importPreviews.length}
                   </span>
                 </div>
 
@@ -617,18 +691,19 @@ export default function SourcesPage() {
                           <p className="mt-1 font-medium text-slate-900">{item.name}</p>
                         </div>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                          {item.sourceType === "link"
-                            ? copy.import.typeLink
-                            : copy.import.typeText}
+                          {getImportSourceTypeLabel(item.sourceType)}
                         </span>
                       </div>
 
                       <div className="mt-3">
                         <p className="text-xs text-slate-500">{copy.import.sourceType}</p>
+                        <p className="mt-1 text-slate-700">{getImportSourceTypeLabel(item.sourceType)}</p>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-xs text-slate-500">{copy.import.protocol}</p>
                         <p className="mt-1 text-slate-700">
-                          {item.sourceType === "link"
-                            ? copy.import.typeLink
-                            : copy.import.typeText}
+                          {getSourceProtocolLabel(item.sourceProtocol)}
                         </p>
                       </div>
 
@@ -695,7 +770,7 @@ export default function SourcesPage() {
               </label>
               <label className="space-y-2">
                 <span className="text-sm font-medium text-slate-700">
-                  {copy.form.url}
+                  {getSourceFieldLabel(formSourceType)}
                 </span>
                 <input
                   required
@@ -846,11 +921,17 @@ export default function SourcesPage() {
                     </td>
                     <td className="px-4 py-4 text-slate-600">
                       <span className="inline-block max-w-[320px] truncate align-middle">
-                        {maskSubscriptionUrl(source.url, role)}
+                        {maskSubscriptionUrl(source, role)}
                       </span>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-medium text-white">
+                          {getSourceTypeLabel(source.sourceType)}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          {getSourceProtocolLabel(source.sourceProtocol)}
+                        </span>
                         {source.tags.length > 0 ? (
                           source.tags.map((tag) => (
                             <span

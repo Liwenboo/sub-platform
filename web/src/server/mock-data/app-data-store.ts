@@ -59,7 +59,10 @@ function mapSourceToDto(source: SourceItem): RemoteSourceDto {
   return {
     id: source.id,
     name: source.name,
+    sourceType: source.sourceType,
+    sourceProtocol: source.sourceProtocol,
     url: source.url,
+    content: source.content,
     tags: [...source.tags],
     status: source.status,
     updatedAt: source.updatedAt,
@@ -110,7 +113,10 @@ function mapAppDataDtoToState(appData: RemoteAppDataDto): AppDataState {
     sources: appData.sources.map((source) => ({
       id: source.id,
       name: source.name,
+      sourceType: source.sourceType,
+      sourceProtocol: source.sourceProtocol,
       url: source.url,
+      content: source.content,
       tags: [...source.tags],
       status: source.status,
       updatedAt: source.updatedAt,
@@ -133,7 +139,10 @@ function createSourceItem(
   return {
     id: source.id?.trim() || `src-${crypto.randomUUID().slice(0, 8)}`,
     name: source.name,
+    sourceType: source.sourceType,
+    sourceProtocol: source.sourceProtocol,
     url: source.url,
+    content: source.content,
     tags: [...source.tags],
     status: source.status,
     updatedAt: source.updatedAt || new Date().toISOString(),
@@ -264,7 +273,10 @@ function createSqliteAppDataStore(): AppDataStore {
           id: sourceId,
           source: {
             name: request.source.name,
+            sourceType: request.source.sourceType,
+            sourceProtocol: request.source.sourceProtocol,
             url: request.source.url,
+            content: request.source.content,
             tags: [...request.source.tags],
             status: request.source.status,
             updatedAt: request.source.updatedAt,

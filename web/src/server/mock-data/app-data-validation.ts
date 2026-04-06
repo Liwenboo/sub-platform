@@ -1,6 +1,7 @@
 import type {
   OutputFormatId,
   SourceStatus,
+  SourceType,
   UserRole,
 } from "../../app/_types/app-types";
 import type { AppDataState } from "../../app/_types/app-types";
@@ -12,9 +13,14 @@ import type {
   RemoteSettingsDto,
   RemoteUpdateSourceRequestDto,
 } from "../../app/_data/repositories/remote-app-data-api-types";
+import {
+  isHttpSubscriptionUrl,
+  resolveSourceProtocol,
+} from "../../app/_data/services/source-entry-service";
 import type { AppDataStoreMutationResult } from "./app-data-store-contract";
 
 const SOURCE_STATUS_VALUES: SourceStatus[] = ["online", "warning", "paused"];
+const SOURCE_TYPE_VALUES: SourceType[] = ["remote", "raw"];
 const OUTPUT_FORMAT_VALUES: OutputFormatId[] = [
   "clash",
   "clash-meta",
@@ -86,13 +92,138 @@ function normalizeTags(value: unknown): string[] | null {
   return normalized.length === value.length ? normalized : null;
 }
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
+function normalizeSourceInput(
+  source: {
+    name?: unknown;
+    sourceType?: unknown;
+    sourceProtocol?: unknown;
+    url?: unknown;
+    content?: unknown;
+    tags?: unknown;
+    updatedAt?: unknown;
+    status?: unknown;
+    id?: unknown;
   }
+): AppDataStoreMutationResult<{
+  id?: string;
+  name: string;
+  sourceType: SourceType;
+  sourceProtocol: RemoteCreateSourceRequestDto["source"]["sourceProtocol"];
+  url: string;
+  content: string | null;
+  tags: string[];
+  status: SourceStatus;
+  updatedAt: string;
+}> {
+  const normalizedId = normalizeOptionalString(source.id);
+  const normalizedName = normalizeOptionalString(source.name);
+  const normalizedSourceType =
+    normalizeOptionalString(source.sourceType) ?? "remote";
+  const normalizedUrl = normalizeOptionalString(source.url);
+  const normalizedContent = normalizeOptionalString(source.content);
+  const normalizedTags = normalizeTags(source.tags);
+  const normalizedUpdatedAt = normalizeOptionalString(source.updatedAt);
+  const normalizedSourceProtocol = normalizeOptionalString(source.sourceProtocol);
+
+  if (!normalizedName) {
+    return createValidationFailure(
+      "validation_failed",
+      'Source "name" cannot be empty.'
+    );
+  }
+
+  if (!SOURCE_TYPE_VALUES.includes(normalizedSourceType as SourceType)) {
+    return createValidationFailure(
+      "validation_failed",
+      'Source "sourceType" must be either "remote" or "raw".'
+    );
+  }
+
+  if (!SOURCE_STATUS_VALUES.includes(source.status as SourceStatus)) {
+    return createValidationFailure(
+      "validation_failed",
+      'Source "status" is invalid.'
+    );
+  }
+
+  if (normalizedTags === null) {
+    return createValidationFailure(
+      "validation_failed",
+      'Source "tags" must be a string array.'
+    );
+  }
+
+  if (normalizedSourceType === "remote") {
+    if (!normalizedUrl) {
+      return createValidationFailure(
+        "validation_failed",
+        'Remote source "url" cannot be empty.'
+      );
+    }
+
+    if (!isHttpSubscriptionUrl(normalizedUrl)) {
+      return createValidationFailure(
+        "validation_failed",
+        'Remote source "url" must be a valid http/https URL.'
+      );
+    }
+
+    return createValidationSuccess({
+      id: normalizedId,
+      name: normalizedName,
+      sourceType: "remote",
+      sourceProtocol:
+        (normalizedSourceProtocol === "http" || normalizedSourceProtocol === "https"
+          ? normalizedSourceProtocol
+          : resolveSourceProtocol(normalizedUrl)) ?? "https",
+      url: normalizedUrl,
+      content: null,
+      tags: normalizedTags,
+      status: source.status as SourceStatus,
+      updatedAt: normalizedUpdatedAt ?? "",
+    });
+  }
+
+  const rawContent = normalizedContent ?? normalizedUrl;
+  if (!rawContent) {
+    return createValidationFailure(
+      "validation_failed",
+      'Raw source "content" cannot be empty.'
+    );
+  }
+
+  const resolvedProtocol = resolveSourceProtocol(rawContent);
+  if (
+    !resolvedProtocol ||
+    resolvedProtocol === "http" ||
+    resolvedProtocol === "https" ||
+    resolvedProtocol === "unknown"
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      'Raw source "content" must start with vmess://, vless://, trojan://, ss:// or socks://.'
+    );
+  }
+
+  return createValidationSuccess({
+    id: normalizedId,
+    name: normalizedName,
+    sourceType: "raw",
+    sourceProtocol:
+      (normalizedSourceProtocol === "vmess" ||
+      normalizedSourceProtocol === "vless" ||
+      normalizedSourceProtocol === "trojan" ||
+      normalizedSourceProtocol === "ss" ||
+      normalizedSourceProtocol === "socks" ||
+      normalizedSourceProtocol === "mixed"
+        ? normalizedSourceProtocol
+        : resolvedProtocol) ?? resolvedProtocol,
+    url: rawContent,
+    content: rawContent,
+    tags: normalizedTags,
+    status: source.status as SourceStatus,
+    updatedAt: normalizedUpdatedAt ?? "",
+  });
 }
 
 export function validateCreateSourceRequest(
@@ -107,65 +238,35 @@ export function validateCreateSourceRequest(
   }
 
   const { source } = request;
-  const normalizedId = normalizeOptionalString(source.id);
-  const normalizedName = normalizeOptionalString(source.name);
-  const normalizedUrl = normalizeOptionalString(source.url);
-  const normalizedTags = normalizeTags(source.tags);
-  const normalizedUpdatedAt = normalizeOptionalString(source.updatedAt);
-
-  if (!normalizedName) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "name" cannot be empty.'
-    );
+  const normalizedSourceResult = normalizeSourceInput(source);
+  if (!normalizedSourceResult.ok) {
+    return normalizedSourceResult;
   }
 
-  if (!normalizedUrl) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "url" cannot be empty.'
-    );
-  }
-
-  if (!isHttpUrl(normalizedUrl)) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "url" must be a valid http/https URL.'
-    );
-  }
-
-  if (!SOURCE_STATUS_VALUES.includes(source.status)) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "status" is invalid.'
-    );
-  }
-
-  if (normalizedTags === null) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "tags" must be a string array.'
-    );
-  }
+  const normalizedSource = normalizedSourceResult.data;
 
   if (
-    normalizedId &&
-    currentState.sources.some((item) => item.id === normalizedId)
+    normalizedSource.id &&
+    currentState.sources.some((item) => item.id === normalizedSource.id)
   ) {
     return createValidationFailure(
       "validation_failed",
-      `Source id "${normalizedId}" already exists.`
+      `Source id "${normalizedSource.id}" already exists.`
     );
   }
 
   return createValidationSuccess({
     source: {
       ...source,
-      id: normalizedId,
-      name: normalizedName,
-      url: normalizedUrl,
-      tags: normalizedTags,
-      updatedAt: normalizedUpdatedAt ?? "",
+      id: normalizedSource.id,
+      name: normalizedSource.name,
+      sourceType: normalizedSource.sourceType,
+      sourceProtocol: normalizedSource.sourceProtocol,
+      url: normalizedSource.url,
+      content: normalizedSource.content,
+      tags: normalizedSource.tags,
+      status: normalizedSource.status,
+      updatedAt: normalizedSource.updatedAt,
     },
   });
 }
@@ -188,47 +289,12 @@ export function validateUpdateSourceRequest(
     );
   }
 
-  const normalizedName = normalizeOptionalString(request.source.name);
-  const normalizedUrl = normalizeOptionalString(request.source.url);
-  const normalizedTags = normalizeTags(request.source.tags);
-  const normalizedUpdatedAt = normalizeOptionalString(request.source.updatedAt);
-
-  if (!normalizedName) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "name" cannot be empty.'
-    );
+  const normalizedSourceResult = normalizeSourceInput(request.source);
+  if (!normalizedSourceResult.ok) {
+    return normalizedSourceResult;
   }
 
-  if (!normalizedUrl) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "url" cannot be empty.'
-    );
-  }
-
-  if (!isHttpUrl(normalizedUrl)) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "url" must be a valid http/https URL.'
-    );
-  }
-
-  if (!SOURCE_STATUS_VALUES.includes(request.source.status)) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "status" is invalid.'
-    );
-  }
-
-  if (normalizedTags === null) {
-    return createValidationFailure(
-      "validation_failed",
-      'Source "tags" must be a string array.'
-    );
-  }
-
-  if (!normalizedUpdatedAt) {
+  if (!normalizedSourceResult.data.updatedAt) {
     return createValidationFailure(
       "validation_failed",
       'Source "updatedAt" cannot be empty.'
@@ -239,10 +305,14 @@ export function validateUpdateSourceRequest(
     sourceId,
     source: {
       ...request.source,
-      name: normalizedName,
-      url: normalizedUrl,
-      tags: normalizedTags,
-      updatedAt: normalizedUpdatedAt,
+      name: normalizedSourceResult.data.name,
+      sourceType: normalizedSourceResult.data.sourceType,
+      sourceProtocol: normalizedSourceResult.data.sourceProtocol,
+      url: normalizedSourceResult.data.url,
+      content: normalizedSourceResult.data.content,
+      tags: normalizedSourceResult.data.tags,
+      status: normalizedSourceResult.data.status,
+      updatedAt: normalizedSourceResult.data.updatedAt,
     },
   });
 }
@@ -268,7 +338,7 @@ export function validateSaveSettingsRequest(
     }
 
     const normalizedServiceUrl = settings.serviceUrl.trim();
-    if (normalizedServiceUrl.length > 0 && !isHttpUrl(normalizedServiceUrl)) {
+    if (normalizedServiceUrl.length > 0 && !isHttpSubscriptionUrl(normalizedServiceUrl)) {
       return createValidationFailure(
         "validation_failed",
         '"serviceUrl" must be a valid http/https URL when provided.'

@@ -3,14 +3,19 @@
 import type {
   OutputFormatId,
   ServiceCheckStatus,
+  SourceProtocol,
   SourceStatus,
+  SourceType,
   UserRole,
 } from "../../_types/app-types";
 
 export type RemoteSourceDto = {
   id: string;
   name: string;
+  sourceType: SourceType;
+  sourceProtocol: SourceProtocol;
   url: string;
+  content: string | null;
   tags: string[];
   status: SourceStatus;
   updatedAt: string;

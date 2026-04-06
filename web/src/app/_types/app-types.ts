@@ -1,4 +1,15 @@
 export type SourceStatus = "online" | "warning" | "paused";
+export type SourceType = "remote" | "raw";
+export type SourceProtocol =
+  | "http"
+  | "https"
+  | "vmess"
+  | "vless"
+  | "trojan"
+  | "ss"
+  | "socks"
+  | "mixed"
+  | "unknown";
 
 export type OutputFormatId = "clash" | "clash-meta" | "v2ray" | "sing-box";
 
@@ -13,7 +24,10 @@ export type ServiceCheckStatus =
 export type SourceItem = {
   id: string;
   name: string;
+  sourceType: SourceType;
+  sourceProtocol: SourceProtocol;
   url: string;
+  content: string | null;
   tags: string[];
   status: SourceStatus;
   updatedAt: string;

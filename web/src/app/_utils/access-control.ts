@@ -1,4 +1,5 @@
-import type { UserRole } from "../_types/app-types";
+import { getSourceDisplayValue } from "../_data/services/source-entry-service";
+import type { SourceItem, UserRole } from "../_types/app-types";
 
 const SENSITIVE_QUERY_KEYS = ["token", "key", "secret", "auth", "signature", "sig"];
 
@@ -54,16 +55,22 @@ function maskMiddle(value: string, head = 6, tail = 4): string {
   return `${value.slice(0, head)}***${value.slice(-tail)}`;
 }
 
-export function maskSubscriptionUrl(url: string, role: UserRole): string {
+export function maskSubscriptionUrl(
+  source: Pick<SourceItem, "sourceType" | "url" | "content"> | string,
+  role: UserRole
+): string {
+  const value =
+    typeof source === "string" ? source : getSourceDisplayValue(source);
+
   if (isAdminRole(role)) {
-    return url;
+    return value;
   }
 
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(value);
     return `${parsed.protocol}//${parsed.host}/...`;
   } catch {
-    return maskMiddle(url, 8, 4);
+    return maskMiddle(value, 8, 4);
   }
 }
 
