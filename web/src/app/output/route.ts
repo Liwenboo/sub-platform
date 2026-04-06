@@ -6,7 +6,12 @@ import {
   getSessionFromToken,
   isViewerAnonymousAccessAllowed,
 } from "../../server/auth/session";
-import type { OutputFormatId, SourceItem } from "../_types/app-types";
+import type { OutputFormatId } from "../_types/app-types";
+import {
+  createRawSourceAccessSignature,
+  getRequestOrigin,
+  resolveSelectedSources,
+} from "./_lib/output-source-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -50,48 +55,13 @@ function normalizeApiPath(apiPath: string): string {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
-function resolveSelectedSources(sourceParam: string, sources: SourceItem[]) {
-  const selectedIds = sourceParam
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .filter((value) => value !== "none");
-
-  if (selectedIds.length === 0) {
-    return {
-      ok: false as const,
-      response: textResponse(
-        'Missing required "source" query parameter.',
-        400
-      ),
-    };
-  }
-
-  const selectedSources = selectedIds
-    .map((id) => sources.find((source) => source.id === id) ?? null)
-    .filter((source): source is SourceItem => source !== null);
-
-  if (selectedSources.length !== selectedIds.length) {
-    const missingIds = selectedIds.filter(
-      (id) => !selectedSources.some((source) => source.id === id)
-    );
-
-    return {
-      ok: false as const,
-      response: textResponse(
-        `Unknown source id: ${missingIds.join(", ")}`,
-        404
-      ),
-    };
-  }
-
-  return {
-    ok: true as const,
-    data: selectedSources,
-  };
-}
-
-function buildUpstreamUrl(requestUrl: URL, serviceUrl: string, apiPath: string, sources: SourceItem[]) {
+function buildUpstreamUrl(
+  request: Request,
+  serviceUrl: string,
+  apiPath: string,
+  sources: Parameters<typeof resolveSelectedSources>[1]
+) {
+  const requestUrl = new URL(request.url);
   const format = requestUrl.searchParams.get("format")?.trim();
   if (!format) {
     return {
@@ -116,12 +86,64 @@ function buildUpstreamUrl(requestUrl: URL, serviceUrl: string, apiPath: string, 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
   const selectedSourcesResult = resolveSelectedSources(sourceParam, sources);
   if (!selectedSourcesResult.ok) {
-    return selectedSourcesResult;
+    if (!sourceParam) {
+      return {
+        ok: false as const,
+        response: textResponse(
+          'Missing required "source" query parameter.',
+          400
+        ),
+      };
+    }
+
+    return {
+      ok: false as const,
+      response: textResponse(
+        `Unknown source id: ${selectedSourcesResult.missingIds.join(", ")}`,
+        404
+      ),
+    };
   }
 
-  const selectedSourceValues = selectedSourcesResult.data.map((source) =>
+  const remoteSources = selectedSourcesResult.sources.filter(
+    (source) => source.sourceType === "remote"
+  );
+  const rawSources = selectedSourcesResult.sources.filter(
+    (source) => source.sourceType === "raw"
+  );
+  const selectedSourceValues = remoteSources.map((source) =>
     getSourceDisplayValue(source)
   );
+
+  if (rawSources.length > 0) {
+    const rawSourceParam = rawSources.map((source) => source.id).join(",");
+    const rawSourceUrl = new URL("/output/raw", getRequestOrigin(request));
+    rawSourceUrl.searchParams.set("source", rawSourceParam);
+
+    const token = requestUrl.searchParams.get("token")?.trim();
+    if (token) {
+      rawSourceUrl.searchParams.set("token", token);
+    }
+
+    const issuedAtSeconds = Math.floor(Date.now() / 1000);
+    const signature = createRawSourceAccessSignature(
+      rawSourceParam,
+      issuedAtSeconds
+    );
+    if (signature) {
+      rawSourceUrl.searchParams.set("ts", String(issuedAtSeconds));
+      rawSourceUrl.searchParams.set("sig", signature);
+    }
+
+    selectedSourceValues.push(rawSourceUrl.toString());
+  }
+
+  if (selectedSourceValues.length === 0) {
+    return {
+      ok: false as const,
+      response: textResponse("No valid sources selected for output.", 400),
+    };
+  }
 
   const upstreamUrl = new URL(
     normalizeApiPath(apiPath),
@@ -190,7 +212,7 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   }
 
   const upstreamUrlResult = buildUpstreamUrl(
-    requestUrl,
+    request,
     serviceUrl,
     appData.settings.apiPath,
     appData.sources
