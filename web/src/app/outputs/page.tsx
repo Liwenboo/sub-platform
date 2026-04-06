@@ -52,7 +52,7 @@ const copy = {
     currentFormat: "\u5f53\u524d\u683c\u5f0f",
     currentSources: "\u5f53\u524d\u8ba2\u9605\u6e90",
     generatedAt: "\u6700\u8fd1\u751f\u6210\u65f6\u95f4",
-    httpsUrl: "HTTPS URL",
+    httpsUrl: "订阅链接",
     noneSource: "\u672a\u9009\u62e9",
     defaultSource: "\u9ed8\u8ba4\u6e90",
     defaultSourceName: "\u5f53\u524d\u9ed8\u8ba4\u8ba2\u9605\u6e90",
@@ -183,6 +183,7 @@ export default function OutputsPage() {
     sources,
     defaultSourceId,
     defaultOutputFormat,
+    httpsEnabled,
     urlTokenEnabled,
     publishDomain,
     hasSelectedOutputSourceIdsDraft,
@@ -372,6 +373,7 @@ export default function OutputsPage() {
       selectedFormat,
       selectedSourceIds,
       publishDomain,
+      httpsEnabled,
       urlTokenEnabled,
       token,
       generationVersion,
@@ -385,6 +387,7 @@ export default function OutputsPage() {
     selectedFormat,
     selectedSourceIds,
     publishDomain,
+    httpsEnabled,
     generationVersion,
     urlTokenEnabled,
     token,
@@ -409,7 +412,7 @@ export default function OutputsPage() {
   };
 
   const handleCopyLink = async () => {
-    const copied = await copyToClipboard(displayedOutputUrl);
+    const copied = await copyToClipboard(outputUrl);
     setCopyState(copied ? "success" : "error");
 
     window.setTimeout(() => {

@@ -4,6 +4,7 @@ export type OutputLinkBuildParams = {
   selectedFormat: OutputFormatId;
   selectedSourceIds: string[];
   publishDomain: string;
+  httpsEnabled: boolean;
   urlTokenEnabled: boolean;
   token?: string;
   generationVersion?: number;
@@ -43,6 +44,7 @@ export function buildInitialSelectedSourceIds(
 
 export function buildOutputLink(params: OutputLinkBuildParams): string {
   const normalizedDomain = normalizePublishDomain(params.publishDomain);
+  const protocol = params.httpsEnabled ? "https" : "http";
   const query = new URLSearchParams();
   query.set("format", params.selectedFormat);
   query.set(
@@ -79,5 +81,5 @@ export function buildOutputLink(params: OutputLinkBuildParams): string {
     query.set("name", trimmedOutputName);
   }
 
-  return `https://${normalizedDomain}/output?${query.toString()}`;
+  return `${protocol}://${normalizedDomain}/output?${query.toString()}`;
 }

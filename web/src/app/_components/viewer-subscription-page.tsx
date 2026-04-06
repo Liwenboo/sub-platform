@@ -94,6 +94,7 @@ export function ViewerSubscriptionPage({
     sources,
     defaultSourceId,
     defaultOutputFormat,
+    httpsEnabled,
     urlTokenEnabled,
     publishDomain,
   } = useAppData();
@@ -128,10 +129,11 @@ export function ViewerSubscriptionPage({
       selectedFormat,
       selectedSourceIds,
       publishDomain,
+      httpsEnabled,
       urlTokenEnabled,
       token: "viewer_demo_token",
     });
-  }, [selectedFormat, selectedSourceIds, publishDomain, urlTokenEnabled]);
+  }, [selectedFormat, selectedSourceIds, publishDomain, httpsEnabled, urlTokenEnabled]);
 
   const displayedOutputUrl = useMemo(
     () => maskSensitiveParamsInUrl(outputUrl, role),
@@ -153,7 +155,7 @@ export function ViewerSubscriptionPage({
       return;
     }
 
-    const copied = await copyToClipboard(displayedOutputUrl);
+    const copied = await copyToClipboard(outputUrl);
     setCopyState(copied ? "success" : "error");
 
     window.setTimeout(() => {
