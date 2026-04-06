@@ -41,7 +41,7 @@ const copy = {
     testConnection: "\u68c0\u6d4b\u8fde\u63a5",
     save: "\u4fdd\u5b58\u8bbe\u7f6e",
     reset: "\u6062\u590d\u9ed8\u8ba4",
-    resetLocal: "\u91cd\u7f6e\u672c\u5730\u6570\u636e",
+    resetLocal: "\u91cd\u7f6e\u5168\u90e8\u6570\u636e",
     toggle: "\u5207\u6362",
   },
   statuses: {
@@ -54,10 +54,10 @@ const copy = {
     noSource: "\u6682\u65e0\u53ef\u7528\u8ba2\u9605\u6e90",
   },
   feedback: {
-    saved: "\u8bbe\u7f6e\u5df2\u4fdd\u5b58\uff08\u672c\u5730\u6a21\u62df\uff09",
+    saved: "\u8bbe\u7f6e\u5df2\u4fdd\u5b58",
     reset: "\u5df2\u6062\u590d\u9ed8\u8ba4\u8bbe\u7f6e",
     localReset:
-      "\u5df2\u91cd\u7f6e\u672c\u5730\u6570\u636e\uff0c\u5f53\u524d\u72b6\u6001\u5df2\u56de\u5230\u521d\u59cb\u9ed8\u8ba4\u503c\u3002",
+      "\u5df2\u91cd\u7f6e\u5168\u90e8\u6570\u636e\uff0c\u5f53\u524d\u72b6\u6001\u5df2\u6062\u590d\u5230\u521d\u59cb\u9ed8\u8ba4\u503c\u3002",
   },
 };
 
@@ -303,7 +303,7 @@ export default function SettingsPage() {
     setErrorMessage(null);
     const result = await resetLocalData();
     if (!result.ok) {
-      setErrorMessage(result.error?.message ?? "重置本地数据失败，请稍后重试。");
+      setErrorMessage(result.error?.message ?? "重置全部数据失败，请稍后重试。");
       return;
     }
 
