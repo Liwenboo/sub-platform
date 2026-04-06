@@ -12,6 +12,7 @@ import {
 import { getServiceStatusView } from "../_utils/service-status";
 
 type FeedbackStatus = "idle" | "saved" | "reset" | "local_reset";
+const TEST_CONNECTION_DELAY_MS = 900;
 
 const copy = {
   title: "\u7cfb\u7edf\u8bbe\u7f6e",
@@ -113,6 +114,10 @@ export default function SettingsPage() {
   const [draftApiPath, setDraftApiPath] = useState(apiPath);
   const [draftPublishDomain, setDraftPublishDomain] = useState(publishDomain);
   const [draftHttpsEnabled, setDraftHttpsEnabled] = useState(httpsEnabled);
+  const [saveSubmitting, setSaveSubmitting] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetAllSubmitting, setResetAllSubmitting] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
 
   const checkTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -162,8 +167,11 @@ export default function SettingsPage() {
     setDraftHttpsEnabled(httpsEnabled);
   }, [httpsEnabled]);
 
+  const hasPendingAction =
+    saveSubmitting || resetSubmitting || resetAllSubmitting || testingConnection;
+
   const handleTestConnection = async () => {
-    if (!canEditSettings) {
+    if (!canEditSettings || hasPendingAction) {
       return;
     }
 
@@ -172,98 +180,121 @@ export default function SettingsPage() {
     }
 
     setErrorMessage(null);
-    const persistDraftResult = await saveSettingsPatch({
-      serviceUrl: draftServiceUrl,
-      apiPath: draftApiPath,
-      publishDomain: draftPublishDomain,
-      httpsEnabled: draftHttpsEnabled,
-    });
+    setTestingConnection(true);
 
-    if (!persistDraftResult.ok) {
-      setErrorMessage(persistDraftResult.error?.message ?? "保存设置失败，请稍后重试。");
-      return;
-    }
+    try {
+      const persistDraftResult = await saveSettingsPatch({
+        serviceUrl: draftServiceUrl,
+        apiPath: draftApiPath,
+        publishDomain: draftPublishDomain,
+        httpsEnabled: draftHttpsEnabled,
+      });
 
-    const checkingResult = await saveSettingsPatch({
-      serviceCheckStatus: "checking",
-      serviceLastCheckedAt: null,
-    });
+      if (!persistDraftResult.ok) {
+        setErrorMessage(persistDraftResult.error?.message ?? "保存设置失败，请稍后重试。");
+        return;
+      }
 
-    if (!checkingResult.ok) {
-      setErrorMessage(checkingResult.error?.message ?? "检测连接失败，请稍后重试。");
-      return;
-    }
+      const checkingResult = await saveSettingsPatch({
+        serviceCheckStatus: "checking",
+        serviceLastCheckedAt: null,
+      });
 
-    checkTimerRef.current = window.setTimeout(() => {
-      const maybeSuccess =
-        draftServiceUrl.startsWith("http") &&
-        draftApiPath.length > 0 &&
-        Math.random() > 0.25;
+      if (!checkingResult.ok) {
+        setErrorMessage(checkingResult.error?.message ?? "检测连接失败，请稍后重试。");
+        return;
+      }
 
-      void (async () => {
-        const result = await saveSettingsPatch({
-          serviceCheckStatus: maybeSuccess ? "success" : "failed",
-          serviceLastCheckedAt: formatDateTime(new Date()),
-        });
-
-        if (!result.ok) {
-          setErrorMessage(result.error?.message ?? "更新连接检测结果失败，请稍后重试。");
-        }
-      })();
+      const maybeSuccess = await new Promise<boolean>((resolve) => {
+        checkTimerRef.current = window.setTimeout(() => {
+          resolve(
+            draftServiceUrl.startsWith("http") &&
+              draftApiPath.length > 0 &&
+              Math.random() > 0.25
+          );
+        }, TEST_CONNECTION_DELAY_MS);
+      });
       checkTimerRef.current = null;
-    }, 900);
+
+      const result = await saveSettingsPatch({
+        serviceCheckStatus: maybeSuccess ? "success" : "failed",
+        serviceLastCheckedAt: formatDateTime(new Date()),
+      });
+
+      if (!result.ok) {
+        setErrorMessage(result.error?.message ?? "更新连接检测结果失败，请稍后重试。");
+      }
+    } finally {
+      setTestingConnection(false);
+    }
   };
 
   const handleSave = async () => {
-    if (!canEditSettings) {
+    if (!canEditSettings || hasPendingAction) {
       return;
     }
 
     setErrorMessage(null);
-    const outputConfigResult = await setDefaultSourceId(draftDefaultSourceId);
-    if (!outputConfigResult.ok) {
-      setErrorMessage(outputConfigResult.error?.message ?? "保存默认订阅源失败，请稍后重试。");
-      return;
+    setSaveSubmitting(true);
+
+    try {
+      const outputConfigResult = await setDefaultSourceId(draftDefaultSourceId);
+      if (!outputConfigResult.ok) {
+        setErrorMessage(
+          outputConfigResult.error?.message ?? "保存默认订阅源失败，请稍后重试。"
+        );
+        return;
+      }
+
+      const formatResult = await setDefaultOutputFormat(draftDefaultOutputFormat);
+      if (!formatResult.ok) {
+        setErrorMessage(formatResult.error?.message ?? "保存默认输出格式失败，请稍后重试。");
+        return;
+      }
+
+      const tokenResult = await setUrlTokenEnabled(draftUrlTokenEnabled);
+      if (!tokenResult.ok) {
+        setErrorMessage(tokenResult.error?.message ?? "保存 URL Token 设置失败，请稍后重试。");
+        return;
+      }
+
+      const settingsResult = await saveSettingsPatch({
+        serviceUrl: draftServiceUrl,
+        apiPath: draftApiPath,
+        publishDomain: draftPublishDomain,
+        httpsEnabled: draftHttpsEnabled,
+      });
+
+      if (!settingsResult.ok) {
+        setErrorMessage(settingsResult.error?.message ?? "保存系统设置失败，请稍后重试。");
+        return;
+      }
+
+      await refreshAppData();
+      setFeedbackStatus("saved");
+
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedbackStatus("idle");
+        feedbackTimerRef.current = null;
+      }, 2000);
+    } finally {
+      setSaveSubmitting(false);
     }
-
-    const formatResult = await setDefaultOutputFormat(draftDefaultOutputFormat);
-    if (!formatResult.ok) {
-      setErrorMessage(formatResult.error?.message ?? "保存默认输出格式失败，请稍后重试。");
-      return;
-    }
-
-    const tokenResult = await setUrlTokenEnabled(draftUrlTokenEnabled);
-    if (!tokenResult.ok) {
-      setErrorMessage(tokenResult.error?.message ?? "保存 URL Token 设置失败，请稍后重试。");
-      return;
-    }
-
-    const settingsResult = await saveSettingsPatch({
-      serviceUrl: draftServiceUrl,
-      apiPath: draftApiPath,
-      publishDomain: draftPublishDomain,
-      httpsEnabled: draftHttpsEnabled,
-    });
-
-    if (!settingsResult.ok) {
-      setErrorMessage(settingsResult.error?.message ?? "保存系统设置失败，请稍后重试。");
-      return;
-    }
-
-    await refreshAppData();
-    setFeedbackStatus("saved");
-
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current);
-    }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setFeedbackStatus("idle");
-      feedbackTimerRef.current = null;
-    }, 2000);
   };
 
   const handleReset = async () => {
-    if (!canEditSettings) {
+    if (!canEditSettings || hasPendingAction) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "恢复默认设置后，服务地址、默认输出配置和发布域名将恢复为系统默认值，当前未保存的修改也会丢失。是否继续？"
+    );
+
+    if (!confirmed) {
       return;
     }
 
@@ -273,25 +304,39 @@ export default function SettingsPage() {
     }
 
     setErrorMessage(null);
-    const result = await resetSettingsDefaults();
-    if (!result.ok) {
-      setErrorMessage(result.error?.message ?? "恢复默认设置失败，请稍后重试。");
-      return;
-    }
+    setResetSubmitting(true);
 
-    setFeedbackStatus("reset");
+    try {
+      const result = await resetSettingsDefaults();
+      if (!result.ok) {
+        setErrorMessage(result.error?.message ?? "恢复默认设置失败，请稍后重试。");
+        return;
+      }
 
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current);
+      setFeedbackStatus("reset");
+
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedbackStatus("idle");
+        feedbackTimerRef.current = null;
+      }, 2000);
+    } finally {
+      setResetSubmitting(false);
     }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setFeedbackStatus("idle");
-      feedbackTimerRef.current = null;
-    }, 2000);
   };
 
   const handleResetLocalData = async () => {
-    if (!canEditSettings) {
+    if (!canEditSettings || hasPendingAction) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "重置全部数据后，订阅源、输出配置和系统设置都会恢复到初始默认值，且该操作不可撤销。是否继续？"
+    );
+
+    if (!confirmed) {
       return;
     }
 
@@ -301,21 +346,27 @@ export default function SettingsPage() {
     }
 
     setErrorMessage(null);
-    const result = await resetLocalData();
-    if (!result.ok) {
-      setErrorMessage(result.error?.message ?? "重置全部数据失败，请稍后重试。");
-      return;
-    }
+    setResetAllSubmitting(true);
 
-    setFeedbackStatus("local_reset");
+    try {
+      const result = await resetLocalData();
+      if (!result.ok) {
+        setErrorMessage(result.error?.message ?? "重置全部数据失败，请稍后重试。");
+        return;
+      }
 
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current);
+      setFeedbackStatus("local_reset");
+
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedbackStatus("idle");
+        feedbackTimerRef.current = null;
+      }, 2200);
+    } finally {
+      setResetAllSubmitting(false);
     }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setFeedbackStatus("idle");
-      feedbackTimerRef.current = null;
-    }, 2200);
   };
 
   const connectionStatusUI = getServiceStatusView(serviceCheckStatus);
@@ -376,10 +427,10 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={handleTestConnection}
-              disabled={serviceCheckStatus === "checking"}
+              disabled={hasPendingAction || serviceCheckStatus === "checking"}
               className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {copy.actions.testConnection}
+              {testingConnection ? "检测中..." : copy.actions.testConnection}
             </button>
           </div>
         </section>
@@ -499,23 +550,26 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={handleSave}
+              disabled={hasPendingAction}
               className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
             >
-              {copy.actions.save}
+              {saveSubmitting ? "保存中..." : copy.actions.save}
             </button>
             <button
               type="button"
               onClick={handleReset}
+              disabled={hasPendingAction}
               className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
-              {copy.actions.reset}
+              {resetSubmitting ? "恢复中..." : copy.actions.reset}
             </button>
             <button
               type="button"
               onClick={handleResetLocalData}
+              disabled={hasPendingAction}
               className="inline-flex h-10 items-center justify-center rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
             >
-              {copy.actions.resetLocal}
+              {resetAllSubmitting ? "重置中..." : copy.actions.resetLocal}
             </button>
             {feedbackStatus === "saved" && (
               <span className="text-sm text-emerald-700">{copy.feedback.saved}</span>

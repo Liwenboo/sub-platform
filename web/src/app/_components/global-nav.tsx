@@ -70,6 +70,8 @@ export function GlobalNav() {
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
       });
     } catch {
       // Ignore network errors and continue with local refresh.

@@ -39,6 +39,29 @@ function normalizeNextPath(input: string | null): string {
   return input;
 }
 
+function getLoginErrorMessage(
+  payload: LoginResponse | null,
+  responseOk: boolean
+): string {
+  if (payload?.error?.code === "invalid_credentials") {
+    return "用户名或密码错误。";
+  }
+
+  if (payload?.error?.code === "too_many_attempts") {
+    return "登录尝试次数过多，请稍后再试。";
+  }
+
+  if (payload?.error?.code === "auth_config_invalid") {
+    return "服务端鉴权配置不完整，请联系管理员处理。";
+  }
+
+  if (!responseOk) {
+    return "登录失败，请稍后重试。";
+  }
+
+  return payload?.error?.message ?? "登录失败，请稍后重试。";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { refreshAppData } = useAppData();
@@ -145,6 +168,8 @@ export default function LoginPage() {
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
         },
@@ -157,7 +182,7 @@ export default function LoginPage() {
       const payload = (await response.json()) as LoginResponse;
 
       if (!response.ok || !payload.success) {
-        setErrorMessage(payload.error?.message ?? "登录失败，请稍后重试。");
+        setErrorMessage(getLoginErrorMessage(payload, response.ok));
         return;
       }
 
@@ -191,8 +216,10 @@ export default function LoginPage() {
               <input
                 type="text"
                 value={username}
+                disabled={submitting}
                 onChange={(event) => setUsername(event.target.value)}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
+                autoComplete="username"
               />
             </label>
 
@@ -201,6 +228,7 @@ export default function LoginPage() {
               <input
                 type="password"
                 value={password}
+                disabled={submitting}
                 onChange={(event) => setPassword(event.target.value)}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
                 autoComplete="current-password"

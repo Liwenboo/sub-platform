@@ -85,6 +85,8 @@ const copy = {
     cancelDelete: "\u53d6\u6d88",
   },
   deletePrompt: "\u786e\u8ba4\u5220\u9664\u8ba2\u9605\u6e90",
+  deleteConsequence:
+    "\u5220\u9664\u540e\u8be5\u8ba2\u9605\u6e90\u5c06\u4ece\u5217\u8868\u548c\u9ed8\u8ba4\u914d\u7f6e\u4e2d\u79fb\u9664\uff0c\u4e14\u65e0\u6cd5\u64a4\u9500\u3002",
 };
 
 function parseTags(tagsInput: string): string[] {
@@ -241,6 +243,7 @@ export default function SourcesPage() {
   }, [canEditSources, router]);
 
   const isEditing = formMode === "edit";
+  const hasPendingAction = formSubmitting || importSubmitting || deleteSubmitting;
 
   if (!canEditSources) {
     return null;
@@ -470,6 +473,7 @@ export default function SourcesPage() {
                 <button
                   type="button"
                   onClick={openImportPanel}
+                  disabled={hasPendingAction}
                   className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   {copy.importButton}
@@ -477,6 +481,7 @@ export default function SourcesPage() {
                 <button
                   type="button"
                   onClick={openCreateForm}
+                  disabled={hasPendingAction}
                   className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
                 >
                   {copy.addButton}
@@ -498,6 +503,7 @@ export default function SourcesPage() {
               <button
                 type="button"
                 onClick={closeImportPanel}
+                disabled={importSubmitting}
                 className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
                 {copy.import.close}
@@ -561,6 +567,7 @@ export default function SourcesPage() {
                   <button
                     type="button"
                     onClick={handleGenerateImportPreview}
+                    disabled={importSubmitting}
                     className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
                   >
                     {copy.import.generatePreview}
@@ -572,6 +579,7 @@ export default function SourcesPage() {
                       setImportError(null);
                       setImportSuccess(null);
                     }}
+                    disabled={importSubmitting}
                     className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                   >
                     {copy.import.clearPreview}
@@ -749,6 +757,7 @@ export default function SourcesPage() {
                 <button
                   type="button"
                   onClick={closeForm}
+                  disabled={formSubmitting}
                   className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   {copy.form.cancel}
@@ -774,6 +783,7 @@ export default function SourcesPage() {
                     {deleteError}
                   </p>
                 )}
+                <p className="text-xs text-rose-700/90">{copy.deleteConsequence}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -787,6 +797,7 @@ export default function SourcesPage() {
                 <button
                   type="button"
                   onClick={cancelDelete}
+                  disabled={deleteSubmitting}
                   className="inline-flex h-8 items-center rounded-lg border border-rose-300 px-3 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100"
                 >
                   {copy.actions.cancelDelete}
@@ -872,6 +883,7 @@ export default function SourcesPage() {
                           <button
                             type="button"
                             onClick={() => openEditForm(source)}
+                            disabled={hasPendingAction}
                             className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
                           >
                             {copy.actions.edit}
@@ -879,6 +891,7 @@ export default function SourcesPage() {
                           <button
                             type="button"
                             onClick={() => requestDelete(source.id)}
+                            disabled={hasPendingAction}
                             className="inline-flex h-8 items-center rounded-lg border border-rose-200 px-3 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50"
                           >
                             {copy.actions.remove}
