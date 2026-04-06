@@ -43,6 +43,137 @@ AUTH_BLOCK_SECONDS=300
 - `SESSION_COOKIE_SECURE=auto` 适合放在 Nginx 后面
 - 修改 `.env.production` 后必须 `pm2 restart sub-platform --update-env`
 
+### 当前环境变量在哪看
+
+如果你是按本文档方式部署，优先看项目根目录的：
+
+```bash
+.env.production
+```
+
+查看全部：
+
+```bash
+cd /srv/sub-platform/web
+cat .env.production
+```
+
+只看关键项：
+
+```bash
+grep -E 'ADMIN_USERNAME|ADMIN_PASSWORD|SESSION_SECRET|VIEWER_ACCESS_MODE|SESSION_TTL_SECONDS|SESSION_COOKIE_SECURE|AUTH_MAX_FAILURES|AUTH_WINDOW_SECONDS|AUTH_BLOCK_SECONDS' .env.production
+```
+
+如果你的环境变量不是写在 `.env.production`，而是由外部注入，也可以看当前进程环境：
+
+```bash
+pm2 env sub-platform
+```
+
+注意：
+
+- `pm2 env` 看到的是当前进程实际拿到的值
+- `.env.production` 改了，但进程没重启时，运行中的服务仍可能继续使用旧值
+
+### 环境变量怎么改
+
+编辑文件：
+
+```bash
+cd /srv/sub-platform/web
+vi .env.production
+```
+
+改完后执行：
+
+```bash
+pm2 restart sub-platform --update-env
+```
+
+如果你改了依赖、Next 构建产物或其它发布内容，按标准发布流程走，不要只重启。
+
+### 管理员账号密码在哪看、怎么改
+
+管理员登录使用的是环境变量：
+
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+
+查看：
+
+```bash
+grep -E 'ADMIN_USERNAME|ADMIN_PASSWORD' .env.production
+```
+
+修改：
+
+```bash
+vi .env.production
+```
+
+把这两项改成新值后执行：
+
+```bash
+pm2 restart sub-platform --update-env
+```
+
+如果只修改了管理员账号密码，通常不需要重新 `build`，重启即可生效。
+
+### Nginx Basic Auth 密码在哪看、怎么改
+
+先说明一件事：
+
+- Nginx Basic Auth 的密码通常不是明文保存
+- 它一般保存在 `htpasswd` 文件里，内容是哈希
+- 所以你通常不能“查看当前密码”，只能“重置为新密码”
+
+先找到 Nginx 配置里 `auth_basic_user_file` 指向的文件：
+
+```bash
+nginx -T | grep auth_basic_user_file
+```
+
+你会看到类似：
+
+```bash
+auth_basic_user_file /etc/nginx/.htpasswd-sub-platform;
+```
+
+查看当前有哪些用户名：
+
+```bash
+cat /etc/nginx/.htpasswd-sub-platform
+```
+
+注意：
+
+- 能看到用户名
+- 看不到原始密码，只能看到哈希
+
+修改或重置某个 Nginx Basic Auth 用户密码：
+
+```bash
+htpasswd /etc/nginx/.htpasswd-sub-platform your-user
+```
+
+如果文件还不存在，可以创建：
+
+```bash
+htpasswd -c /etc/nginx/.htpasswd-sub-platform your-user
+```
+
+改完后检查并重载 Nginx：
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+如果服务器没装 `htpasswd`，先安装对应包：
+
+- Debian / Ubuntu: `apache2-utils`
+- CentOS / Rocky / AlmaLinux: `httpd-tools`
+
 ## 3. PM2 启动
 
 仓库内配置文件：
@@ -174,6 +305,7 @@ curl -I https://your-domain.com/api/auth/session
 - `Set-Cookie` 是否与当前协议匹配
 - Nginx 是否传了 `X-Forwarded-Proto`
 - 是否执行过 `pm2 restart sub-platform --update-env`
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD` 是否改对了位置
 
 ### 页面变成无样式 HTML
 
