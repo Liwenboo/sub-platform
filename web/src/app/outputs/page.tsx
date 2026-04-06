@@ -185,6 +185,9 @@ export default function OutputsPage() {
     defaultOutputFormat,
     urlTokenEnabled,
     publishDomain,
+    hasSelectedOutputSourceIdsDraft,
+    selectedOutputSourceIdsDraft,
+    setSelectedOutputSourceIdsDraft,
   } = useAppData();
   const canEditOutputParams = isAdminRole(role);
   const showPublishControls = canManageOutputsPublish(role);
@@ -204,9 +207,6 @@ export default function OutputsPage() {
     ? copy.sections.result
     : "\u8ba2\u9605\u94fe\u63a5\u7ed3\u679c";
 
-  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>(() =>
-    buildInitialSelectedSourceIds(sources, defaultSourceId)
-  );
   const [selectedFormat, setSelectedFormat] =
     useState<OutputFormatId>(defaultOutputFormat);
   const [token, setToken] = useState<string>(OUTPUT_INITIAL_TOKEN);
@@ -240,19 +240,41 @@ export default function OutputsPage() {
     setSelectedFormat(defaultOutputFormat);
   }, [defaultOutputFormat]);
 
+  const selectedSourceIds = useMemo(() => {
+    const validDraftIds = selectedOutputSourceIdsDraft.filter((id) =>
+      sources.some((source) => source.id === id)
+    );
+
+    if (hasSelectedOutputSourceIdsDraft) {
+      return validDraftIds;
+    }
+
+    return buildInitialSelectedSourceIds(sources, defaultSourceId);
+  }, [
+    defaultSourceId,
+    hasSelectedOutputSourceIdsDraft,
+    selectedOutputSourceIdsDraft,
+    sources,
+  ]);
+
   useEffect(() => {
-    setSelectedSourceIds((prev) => {
-      const validIds = prev.filter((id) =>
-        sources.some((source) => source.id === id)
-      );
+    if (!hasSelectedOutputSourceIdsDraft) {
+      return;
+    }
 
-      if (validIds.length > 0) {
-        return validIds;
-      }
+    const validDraftIds = selectedOutputSourceIdsDraft.filter((id) =>
+      sources.some((source) => source.id === id)
+    );
 
-      return buildInitialSelectedSourceIds(sources, defaultSourceId);
-    });
-  }, [sources, defaultSourceId]);
+    if (validDraftIds.length !== selectedOutputSourceIdsDraft.length) {
+      setSelectedOutputSourceIdsDraft(validDraftIds);
+    }
+  }, [
+    hasSelectedOutputSourceIdsDraft,
+    selectedOutputSourceIdsDraft,
+    setSelectedOutputSourceIdsDraft,
+    sources,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -379,10 +401,10 @@ export default function OutputsPage() {
   );
 
   const toggleSourceSelection = (sourceId: string) => {
-    setSelectedSourceIds((prev) =>
-      prev.includes(sourceId)
-        ? prev.filter((id) => id !== sourceId)
-        : [...prev, sourceId]
+    setSelectedOutputSourceIdsDraft(
+      selectedSourceIds.includes(sourceId)
+        ? selectedSourceIds.filter((id) => id !== sourceId)
+        : [...selectedSourceIds, sourceId]
     );
   };
 

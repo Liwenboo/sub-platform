@@ -95,10 +95,6 @@ export default function SettingsPage() {
     setDefaultSourceId,
     setDefaultOutputFormat,
     setUrlTokenEnabled,
-    setServiceUrl,
-    setApiPath,
-    setPublishDomain,
-    setHttpsEnabled,
     resetSettingsDefaults,
     resetLocalData,
   } = useAppData();
@@ -107,6 +103,16 @@ export default function SettingsPage() {
 
   const [feedbackStatus, setFeedbackStatus] = useState<FeedbackStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draftDefaultSourceId, setDraftDefaultSourceId] = useState<string | null>(
+    defaultSourceId
+  );
+  const [draftDefaultOutputFormat, setDraftDefaultOutputFormat] =
+    useState<OutputFormatId>(defaultOutputFormat);
+  const [draftUrlTokenEnabled, setDraftUrlTokenEnabled] = useState(urlTokenEnabled);
+  const [draftServiceUrl, setDraftServiceUrl] = useState(serviceUrl);
+  const [draftApiPath, setDraftApiPath] = useState(apiPath);
+  const [draftPublishDomain, setDraftPublishDomain] = useState(publishDomain);
+  const [draftHttpsEnabled, setDraftHttpsEnabled] = useState(httpsEnabled);
 
   const checkTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -128,7 +134,35 @@ export default function SettingsPage() {
     }
   }, [canEditSettings, router]);
 
-  const handleTestConnection = () => {
+  useEffect(() => {
+    setDraftDefaultSourceId(defaultSourceId);
+  }, [defaultSourceId]);
+
+  useEffect(() => {
+    setDraftDefaultOutputFormat(defaultOutputFormat);
+  }, [defaultOutputFormat]);
+
+  useEffect(() => {
+    setDraftUrlTokenEnabled(urlTokenEnabled);
+  }, [urlTokenEnabled]);
+
+  useEffect(() => {
+    setDraftServiceUrl(serviceUrl);
+  }, [serviceUrl]);
+
+  useEffect(() => {
+    setDraftApiPath(apiPath);
+  }, [apiPath]);
+
+  useEffect(() => {
+    setDraftPublishDomain(publishDomain);
+  }, [publishDomain]);
+
+  useEffect(() => {
+    setDraftHttpsEnabled(httpsEnabled);
+  }, [httpsEnabled]);
+
+  const handleTestConnection = async () => {
     if (!canEditSettings) {
       return;
     }
@@ -138,20 +172,33 @@ export default function SettingsPage() {
     }
 
     setErrorMessage(null);
-    void (async () => {
-      const result = await saveSettingsPatch({
-        serviceCheckStatus: "checking",
-        serviceLastCheckedAt: null,
-      });
+    const persistDraftResult = await saveSettingsPatch({
+      serviceUrl: draftServiceUrl,
+      apiPath: draftApiPath,
+      publishDomain: draftPublishDomain,
+      httpsEnabled: draftHttpsEnabled,
+    });
 
-      if (!result.ok) {
-        setErrorMessage(result.error?.message ?? "检测连接失败，请稍后重试。");
-      }
-    })();
+    if (!persistDraftResult.ok) {
+      setErrorMessage(persistDraftResult.error?.message ?? "保存设置失败，请稍后重试。");
+      return;
+    }
+
+    const checkingResult = await saveSettingsPatch({
+      serviceCheckStatus: "checking",
+      serviceLastCheckedAt: null,
+    });
+
+    if (!checkingResult.ok) {
+      setErrorMessage(checkingResult.error?.message ?? "检测连接失败，请稍后重试。");
+      return;
+    }
 
     checkTimerRef.current = window.setTimeout(() => {
       const maybeSuccess =
-        serviceUrl.startsWith("http") && apiPath.length > 0 && Math.random() > 0.25;
+        draftServiceUrl.startsWith("http") &&
+        draftApiPath.length > 0 &&
+        Math.random() > 0.25;
 
       void (async () => {
         const result = await saveSettingsPatch({
@@ -173,6 +220,36 @@ export default function SettingsPage() {
     }
 
     setErrorMessage(null);
+    const outputConfigResult = await setDefaultSourceId(draftDefaultSourceId);
+    if (!outputConfigResult.ok) {
+      setErrorMessage(outputConfigResult.error?.message ?? "保存默认订阅源失败，请稍后重试。");
+      return;
+    }
+
+    const formatResult = await setDefaultOutputFormat(draftDefaultOutputFormat);
+    if (!formatResult.ok) {
+      setErrorMessage(formatResult.error?.message ?? "保存默认输出格式失败，请稍后重试。");
+      return;
+    }
+
+    const tokenResult = await setUrlTokenEnabled(draftUrlTokenEnabled);
+    if (!tokenResult.ok) {
+      setErrorMessage(tokenResult.error?.message ?? "保存 URL Token 设置失败，请稍后重试。");
+      return;
+    }
+
+    const settingsResult = await saveSettingsPatch({
+      serviceUrl: draftServiceUrl,
+      apiPath: draftApiPath,
+      publishDomain: draftPublishDomain,
+      httpsEnabled: draftHttpsEnabled,
+    });
+
+    if (!settingsResult.ok) {
+      setErrorMessage(settingsResult.error?.message ?? "保存系统设置失败，请稍后重试。");
+      return;
+    }
+
     await refreshAppData();
     setFeedbackStatus("saved");
 
@@ -270,8 +347,8 @@ export default function SettingsPage() {
               </span>
               <input
                 type="text"
-                value={serviceUrl}
-                onChange={(event) => setServiceUrl(event.target.value)}
+                value={draftServiceUrl}
+                onChange={(event) => setDraftServiceUrl(event.target.value)}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
               />
             </label>
@@ -281,8 +358,8 @@ export default function SettingsPage() {
               </span>
               <input
                 type="text"
-                value={apiPath}
-                onChange={(event) => setApiPath(event.target.value)}
+                value={draftApiPath}
+                onChange={(event) => setDraftApiPath(event.target.value)}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
               />
             </label>
@@ -317,9 +394,9 @@ export default function SettingsPage() {
                 {copy.fields.defaultFormat}
               </span>
               <select
-                value={defaultOutputFormat}
+                value={draftDefaultOutputFormat}
                 onChange={(event) =>
-                  setDefaultOutputFormat(event.target.value as OutputFormatId)
+                  setDraftDefaultOutputFormat(event.target.value as OutputFormatId)
                 }
                 className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
               >
@@ -335,9 +412,9 @@ export default function SettingsPage() {
                 {copy.fields.defaultSource}
               </span>
               <select
-                value={defaultSourceId ?? ""}
+                value={draftDefaultSourceId ?? ""}
                 onChange={(event) =>
-                  setDefaultSourceId(
+                  setDraftDefaultSourceId(
                     event.target.value.length > 0 ? event.target.value : null
                   )
                 }
@@ -360,15 +437,15 @@ export default function SettingsPage() {
             </span>
             <button
               type="button"
-              aria-pressed={urlTokenEnabled}
-              onClick={() => setUrlTokenEnabled(!urlTokenEnabled)}
+              aria-pressed={draftUrlTokenEnabled}
+              onClick={() => setDraftUrlTokenEnabled(!draftUrlTokenEnabled)}
               className={`inline-flex h-6 w-11 items-center rounded-full p-1 transition-colors ${
-                urlTokenEnabled ? "bg-slate-900" : "bg-slate-300"
+                draftUrlTokenEnabled ? "bg-slate-900" : "bg-slate-300"
               }`}
             >
               <span
                 className={`h-4 w-4 rounded-full bg-white transition-transform ${
-                  urlTokenEnabled ? "translate-x-5" : "translate-x-0"
+                  draftUrlTokenEnabled ? "translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>
@@ -386,8 +463,8 @@ export default function SettingsPage() {
               </span>
               <input
                 type="text"
-                value={publishDomain}
-                onChange={(event) => setPublishDomain(event.target.value)}
+                value={draftPublishDomain}
+                onChange={(event) => setDraftPublishDomain(event.target.value)}
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
               />
             </label>
@@ -398,16 +475,16 @@ export default function SettingsPage() {
               <div className="flex h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3">
                 <span
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                    httpsEnabled
+                    draftHttpsEnabled
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-slate-200 text-slate-700"
                   }`}
                 >
-                  {httpsEnabled ? copy.statuses.enabled : copy.statuses.disabled}
+                  {draftHttpsEnabled ? copy.statuses.enabled : copy.statuses.disabled}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setHttpsEnabled(!httpsEnabled)}
+                  onClick={() => setDraftHttpsEnabled(!draftHttpsEnabled)}
                   className="text-xs font-medium text-slate-600 transition-colors hover:text-slate-900"
                 >
                   {copy.actions.toggle}

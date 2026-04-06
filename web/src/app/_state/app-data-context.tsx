@@ -36,6 +36,10 @@ export type {
 } from "../_types/app-types";
 
 type AppDataContextValue = AppDataState & {
+  hasSelectedOutputSourceIdsDraft: boolean;
+  selectedOutputSourceIdsDraft: string[];
+  setSelectedOutputSourceIdsDraft: (ids: string[]) => void;
+  clearSelectedOutputSourceIdsDraft: () => void;
   saveSettingsPatch: (patch: SystemSettingsPatch) => Promise<AppDataMutationResult>;
   refreshAppData: () => Promise<UserRole>;
   setRole: (role: UserRole) => Promise<AppDataMutationResult>;
@@ -62,15 +66,63 @@ export type AppDataMutationResult = {
 
 const appDataRepository = createAppDataRepository();
 const AppDataContext = createContext<AppDataContextValue | null>(null);
+const OUTPUT_SELECTION_DRAFT_STORAGE_KEY =
+  "sub-platform.outputs.selected-source-ids";
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppDataState>(createDefaultAppDataState);
+  const [selectedOutputSourceIdsDraft, setSelectedOutputSourceIdsDraftState] = useState<
+    string[]
+  >(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    try {
+      const raw = window.sessionStorage.getItem(OUTPUT_SELECTION_DRAFT_STORAGE_KEY);
+      if (!raw) {
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is string => typeof item === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const [hasSelectedOutputSourceIdsDraft, setHasSelectedOutputSourceIdsDraft] = useState(
+    () => {
+      if (typeof window === "undefined") {
+        return false;
+      }
+
+      return window.sessionStorage.getItem(OUTPUT_SELECTION_DRAFT_STORAGE_KEY) !== null;
+    }
+  );
   const stateRef = useRef<AppDataState>(state);
   const actionQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!hasSelectedOutputSourceIdsDraft) {
+      window.sessionStorage.removeItem(OUTPUT_SELECTION_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      OUTPUT_SELECTION_DRAFT_STORAGE_KEY,
+      JSON.stringify(selectedOutputSourceIdsDraft)
+    );
+  }, [hasSelectedOutputSourceIdsDraft, selectedOutputSourceIdsDraft]);
 
   const resolveRepositoryCall = useCallback(
     async <T,>(call: RepositoryMaybePromise<RepositoryResult<T>>) => Promise.resolve(call),
@@ -268,9 +320,23 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const normalizedState = normalizeAppDataState(state);
 
+  const setSelectedOutputSourceIdsDraft = useCallback((ids: string[]) => {
+    setSelectedOutputSourceIdsDraftState([...ids]);
+    setHasSelectedOutputSourceIdsDraft(true);
+  }, []);
+
+  const clearSelectedOutputSourceIdsDraft = useCallback(() => {
+    setSelectedOutputSourceIdsDraftState([]);
+    setHasSelectedOutputSourceIdsDraft(false);
+  }, []);
+
   const contextValue = useMemo<AppDataContextValue>(
     () => ({
       ...normalizedState,
+      hasSelectedOutputSourceIdsDraft,
+      selectedOutputSourceIdsDraft,
+      setSelectedOutputSourceIdsDraft,
+      clearSelectedOutputSourceIdsDraft,
       saveSettingsPatch: saveSystemSettings,
       refreshAppData,
       setRole,
@@ -291,6 +357,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       normalizedState,
+      hasSelectedOutputSourceIdsDraft,
+      selectedOutputSourceIdsDraft,
+      setSelectedOutputSourceIdsDraft,
+      clearSelectedOutputSourceIdsDraft,
       saveSystemSettings,
       refreshAppData,
       setRole,
