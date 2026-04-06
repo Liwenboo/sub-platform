@@ -1,0 +1,3 @@
+[auth] Missing required environment variables: ADMIN_USERNAME, ADMIN_PASSWORD, SESSION_SECRET. Login will be unavailable until configured.
+(node:16372) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
