@@ -7,12 +7,12 @@ import { successResponse } from "../../_lib/mock-api-response";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(request: Request) {
   const cookieStore = await cookies();
   cookieStore.set(
     AUTH_SESSION_COOKIE_NAME,
     "",
-    getExpiredAuthSessionCookieOptions()
+    getExpiredAuthSessionCookieOptions(request)
   );
 
   return successResponse({ role: "viewer" as const });

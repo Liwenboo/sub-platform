@@ -83,7 +83,7 @@ export async function POST(request: Request) {
   cookieStore.set(
     AUTH_SESSION_COOKIE_NAME,
     sessionToken,
-    getAuthSessionCookieOptions(getAdminSessionTtlSeconds())
+    getAuthSessionCookieOptions(request, getAdminSessionTtlSeconds())
   );
 
   return successResponse({ role: "admin" as const });

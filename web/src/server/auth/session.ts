@@ -284,23 +284,71 @@ export function getRoleFromSessionToken(token: string | undefined): UserRole {
   return getSessionFromToken(token).role;
 }
 
-export function getAuthSessionCookieOptions(maxAgeSeconds: number) {
+function resolveRequestProtocol(request?: Request): "http" | "https" | null {
+  if (!request) {
+    return null;
+  }
+
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.trim();
+  if (forwardedProto) {
+    const normalizedProto = forwardedProto.split(",")[0]?.trim().toLowerCase();
+
+    if (normalizedProto === "http" || normalizedProto === "https") {
+      return normalizedProto;
+    }
+  }
+
+  try {
+    const protocol = new URL(request.url).protocol.replace(/:$/, "").toLowerCase();
+
+    if (protocol === "http" || protocol === "https") {
+      return protocol;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function shouldUseSecureAuthCookie(request?: Request): boolean {
+  const requestProtocol = resolveRequestProtocol(request);
+
+  if (requestProtocol === "https") {
+    return true;
+  }
+
+  if (requestProtocol === "http") {
+    return false;
+  }
+
+  return process.env.NODE_ENV === "production";
+}
+
+export function getAuthSessionCookieOptions(
+  request: Request | undefined,
+  maxAgeSeconds: number
+) {
+  const maxAge = Math.max(1, Math.floor(maxAgeSeconds));
+
   return {
     path: "/",
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: Math.max(1, Math.floor(maxAgeSeconds)),
+    secure: shouldUseSecureAuthCookie(request),
+    maxAge,
+    expires: new Date(Date.now() + maxAge * 1000),
   };
 }
 
-export function getExpiredAuthSessionCookieOptions() {
+export function getExpiredAuthSessionCookieOptions(request?: Request) {
   return {
     path: "/",
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureAuthCookie(request),
     maxAge: 0,
+    expires: new Date(0),
   };
 }
 
