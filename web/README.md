@@ -42,6 +42,7 @@ Optional environment variables:
 ```bash
 SESSION_TTL_SECONDS=28800
 VIEWER_ACCESS_MODE=authenticated
+SESSION_COOKIE_SECURE=auto
 AUTH_MAX_FAILURES=5
 AUTH_WINDOW_SECONDS=300
 AUTH_BLOCK_SECONDS=300
@@ -52,19 +53,45 @@ AUTH_BLOCK_SECONDS=300
 - `anonymous`: viewer pages and read APIs can be accessed without login.
 - `authenticated` (default): viewer pages and read APIs also require login.
 
+`SESSION_COOKIE_SECURE`:
+
+- `auto` (default): determine the cookie `Secure` flag from `x-forwarded-proto` or request URL.
+- `true`: always issue the session cookie as `Secure`.
+- `false`: always issue the session cookie without `Secure`.
+
+Current session cookie behavior:
+
+- Cookie name: `sp_admin_session`
+- `HttpOnly: true`
+- `SameSite: lax`
+- `Path: /`
+- No `Domain` override
+- Expiration follows `SESSION_TTL_SECONDS`
+
 For backward compatibility, `SUB_PLATFORM_*` prefixed names are also accepted.
 
 ### Local setup
 
 1. Create `.env.local` in project root.
 2. Add the required variables above.
-3. Start dev server with `npm run dev`.
+3. Keep `SESSION_COOKIE_SECURE=auto` for normal local development over `http://localhost`.
+4. If you run behind a reverse proxy, make sure it forwards `X-Forwarded-Proto` correctly.
+5. Start dev server with `npm run dev`.
 
 ### Cloud/server deployment setup
 
-1. Configure env vars in your platform (Docker, systemd, PM2, Vercel, etc.).
+1. Configure these env vars in your platform (Docker, systemd, PM2, Vercel, etc.):
+   - `ADMIN_USERNAME`
+   - `ADMIN_PASSWORD`
+   - `SESSION_SECRET`
+   - `SESSION_TTL_SECONDS`
+   - `VIEWER_ACCESS_MODE`
+   - `SESSION_COOKIE_SECURE`
 2. Ensure `SESSION_SECRET` is a strong random string and never checked into git.
-3. Build and run:
+3. Prefer `SESSION_COOKIE_SECURE=auto` and ensure your reverse proxy passes the real protocol in `X-Forwarded-Proto`.
+4. If the site is only reachable via HTTPS, you may force `SESSION_COOKIE_SECURE=true`.
+5. If you temporarily serve plain HTTP in a trusted internal environment, use `SESSION_COOKIE_SECURE=auto` or `false`.
+6. Build and run:
    - `npm run build`
    - `npm run start`
 

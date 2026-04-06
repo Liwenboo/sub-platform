@@ -1,0 +1,13 @@
+(node:4652) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+⨯ Error: disk I/O error
+    at O (D:\Codex\sub-platform\web\.next\server\chunks\[root-of-the-server]__0qwnm~u._.js:1:7293)
+    at N (D:\Codex\sub-platform\web\.next\server\chunks\[root-of-the-server]__0qwnm~u._.js:13:296)
+    at async Object.loadAppData (D:\Codex\sub-platform\web\.next\server\chunks\[root-of-the-server]__0qwnm~u._.js:13:1743)
+    at async E (D:\Codex\sub-platform\web\.next\server\chunks\[root-of-the-server]__0gz3e02._.js:1:2401)
+    at async l (D:\Codex\sub-platform\web\.next\server\chunks\[root-of-the-server]__0gz3e02._.js:1:5658)
+    at async s (D:\Codex\sub-platform\web\.next\server\chunks\[root-of-the-server]__0gz3e02._.js:1:6699) {
+  code: 'ERR_SQLITE_ERROR',
+  errcode: 2570,
+  errstr: 'disk I/O error'
+}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useAppData } from "../_state/app-data-context";
 import { NAV_ITEMS } from "../_config/navigation";
 import { isNavItemVisible } from "../_utils/access-control";
@@ -24,6 +24,46 @@ export function GlobalNav() {
   const visibleNavItems = NAV_ITEMS.filter((item) => isNavItemVisible(role, item.href));
   const loginHref = `/login?next=${encodeURIComponent(pathname || "/")}`;
 
+  const fetchSession = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/session", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+
+      return (await response.json()) as {
+        success: boolean;
+        data: {
+          authenticated: boolean;
+          role: "admin" | "viewer";
+        } | null;
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const syncViewerSessionState = useCallback(async (): Promise<void> => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const sessionPayload = await fetchSession();
+      const roleAfterRefresh = await refreshAppData();
+
+      if (
+        sessionPayload?.success &&
+        sessionPayload.data?.authenticated === false &&
+        sessionPayload.data.role === "viewer" &&
+        roleAfterRefresh === "viewer"
+      ) {
+        return;
+      }
+
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 120);
+      });
+    }
+  }, [fetchSession, refreshAppData]);
+
   const handleLogout = async () => {
     setLogoutLoading(true);
 
@@ -35,7 +75,7 @@ export function GlobalNav() {
       // Ignore network errors and continue with local refresh.
     } finally {
       try {
-        await refreshAppData();
+        await syncViewerSessionState();
       } catch {
         // Ignore refresh failures and continue navigation fallback.
       }

@@ -5,6 +5,7 @@ export const AUTH_SESSION_COOKIE_NAME = "sp_admin_session";
 
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 8;
 const DEFAULT_VIEWER_ACCESS_MODE: ViewerAccessMode = "authenticated";
+const DEFAULT_SESSION_COOKIE_SECURE_MODE: SessionCookieSecureMode = "auto";
 
 type AuthConfigKey =
   | "ADMIN_USERNAME"
@@ -18,6 +19,7 @@ type AuthConfig = {
 };
 
 export type ViewerAccessMode = "anonymous" | "authenticated";
+export type SessionCookieSecureMode = "auto" | "true" | "false";
 
 type SessionPayload = {
   role: UserRole;
@@ -130,6 +132,19 @@ export function getViewerAccessMode(): ViewerAccessMode {
 
 export function isViewerAnonymousAccessAllowed(): boolean {
   return getViewerAccessMode() === "anonymous";
+}
+
+export function getSessionCookieSecureMode(): SessionCookieSecureMode {
+  const rawMode = readEnvValue([
+    "SESSION_COOKIE_SECURE",
+    "SUB_PLATFORM_SESSION_COOKIE_SECURE",
+  ]);
+
+  if (rawMode === "true" || rawMode === "false" || rawMode === "auto") {
+    return rawMode;
+  }
+
+  return DEFAULT_SESSION_COOKIE_SECURE_MODE;
 }
 
 function parseSessionPayload(token: string): SessionPayload | null {
@@ -312,6 +327,16 @@ function resolveRequestProtocol(request?: Request): "http" | "https" | null {
 }
 
 export function shouldUseSecureAuthCookie(request?: Request): boolean {
+  const configuredMode = getSessionCookieSecureMode();
+
+  if (configuredMode === "true") {
+    return true;
+  }
+
+  if (configuredMode === "false") {
+    return false;
+  }
+
   const requestProtocol = resolveRequestProtocol(request);
 
   if (requestProtocol === "https") {
