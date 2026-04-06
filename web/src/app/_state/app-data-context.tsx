@@ -21,6 +21,7 @@ import type {
 } from "../_types/app-types";
 import type {
   OutputConfigPatch,
+  RepositoryError,
   RepositoryMaybePromise,
   RepositoryResult,
   SystemSettingsPatch,
@@ -35,22 +36,28 @@ export type {
 } from "../_types/app-types";
 
 type AppDataContextValue = AppDataState & {
+  saveSettingsPatch: (patch: SystemSettingsPatch) => Promise<AppDataMutationResult>;
   refreshAppData: () => Promise<UserRole>;
-  setRole: (role: UserRole) => void;
-  addSource: (source: SourceItem) => void;
-  updateSource: (id: string, source: Omit<SourceItem, "id">) => void;
-  deleteSource: (id: string) => void;
-  setDefaultSourceId: (id: string | null) => void;
-  setDefaultOutputFormat: (format: OutputFormatId) => void;
-  setUrlTokenEnabled: (enabled: boolean) => void;
-  setServiceUrl: (serviceUrl: string) => void;
-  setApiPath: (apiPath: string) => void;
-  setServiceCheckStatus: (status: ServiceCheckStatus) => void;
-  setServiceLastCheckedAt: (checkedAt: string | null) => void;
-  setPublishDomain: (publishDomain: string) => void;
-  setHttpsEnabled: (httpsEnabled: boolean) => void;
-  resetSettingsDefaults: () => void;
-  resetLocalData: () => void;
+  setRole: (role: UserRole) => Promise<AppDataMutationResult>;
+  addSource: (source: SourceItem) => Promise<AppDataMutationResult>;
+  updateSource: (id: string, source: Omit<SourceItem, "id">) => Promise<AppDataMutationResult>;
+  deleteSource: (id: string) => Promise<AppDataMutationResult>;
+  setDefaultSourceId: (id: string | null) => Promise<AppDataMutationResult>;
+  setDefaultOutputFormat: (format: OutputFormatId) => Promise<AppDataMutationResult>;
+  setUrlTokenEnabled: (enabled: boolean) => Promise<AppDataMutationResult>;
+  setServiceUrl: (serviceUrl: string) => Promise<AppDataMutationResult>;
+  setApiPath: (apiPath: string) => Promise<AppDataMutationResult>;
+  setServiceCheckStatus: (status: ServiceCheckStatus) => Promise<AppDataMutationResult>;
+  setServiceLastCheckedAt: (checkedAt: string | null) => Promise<AppDataMutationResult>;
+  setPublishDomain: (publishDomain: string) => Promise<AppDataMutationResult>;
+  setHttpsEnabled: (httpsEnabled: boolean) => Promise<AppDataMutationResult>;
+  resetSettingsDefaults: () => Promise<AppDataMutationResult>;
+  resetLocalData: () => Promise<AppDataMutationResult>;
+};
+
+export type AppDataMutationResult = {
+  ok: boolean;
+  error: RepositoryError | null;
 };
 
 const appDataRepository = createAppDataRepository();
@@ -111,130 +118,160 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     return normalizeAppDataState(result.state).role;
   }, [runStateReplacement]);
 
+  const extractMutationResult = useCallback(
+    (result: RepositoryResult<unknown>): AppDataMutationResult => ({
+      ok: result.ok,
+      error: result.error,
+    }),
+    []
+  );
+
+  const runMutation = useCallback(
+    async <T,>(
+      callFactory: () => RepositoryMaybePromise<RepositoryResult<T>>,
+      options?: { refreshAfterSuccess?: boolean }
+    ): Promise<AppDataMutationResult> => {
+      const result = await runStateReplacement(callFactory);
+
+      if (result.ok && options?.refreshAfterSuccess) {
+        await refreshAppData();
+      }
+
+      return extractMutationResult(result);
+    },
+    [extractMutationResult, refreshAppData, runStateReplacement]
+  );
+
   useEffect(() => {
     void refreshAppData();
   }, [refreshAppData]);
 
   const setRole = useCallback((role: UserRole) => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.setRole({
           state: stateRef.current,
           role,
-        })
+        }),
+      { refreshAfterSuccess: true }
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const updateOutputConfig = useCallback((patch: OutputConfigPatch) => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.saveOutputConfig({
           state: stateRef.current,
           outputConfig: patch,
         })
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const saveSystemSettings = useCallback((patch: SystemSettingsPatch) => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.saveSettings({
           state: stateRef.current,
           settings: patch,
         })
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const addSource = useCallback((source: SourceItem) => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.createSource({
           state: stateRef.current,
           source,
-        })
+        }),
+      { refreshAfterSuccess: true }
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const updateSource = useCallback((id: string, source: Omit<SourceItem, "id">) => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.updateSource({
           state: stateRef.current,
           sourceId: id,
           source,
-        })
+        }),
+      { refreshAfterSuccess: true }
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const deleteSource = useCallback((id: string) => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.removeSource({
           state: stateRef.current,
           sourceId: id,
-        })
+        }),
+      { refreshAfterSuccess: true }
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const setDefaultSourceId = useCallback((id: string | null) => {
-    updateOutputConfig({ defaultSourceId: id });
+    return updateOutputConfig({ defaultSourceId: id });
   }, [updateOutputConfig]);
 
   const setDefaultOutputFormat = useCallback((format: OutputFormatId) => {
-    updateOutputConfig({ defaultOutputFormat: format });
+    return updateOutputConfig({ defaultOutputFormat: format });
   }, [updateOutputConfig]);
 
   const setUrlTokenEnabled = useCallback((enabled: boolean) => {
-    updateOutputConfig({ urlTokenEnabled: enabled });
+    return updateOutputConfig({ urlTokenEnabled: enabled });
   }, [updateOutputConfig]);
 
   const setServiceUrl = useCallback((serviceUrl: string) => {
-    saveSystemSettings({ serviceUrl });
+    return saveSystemSettings({ serviceUrl });
   }, [saveSystemSettings]);
 
   const setApiPath = useCallback((apiPath: string) => {
-    saveSystemSettings({ apiPath });
+    return saveSystemSettings({ apiPath });
   }, [saveSystemSettings]);
 
   const setServiceCheckStatus = useCallback((status: ServiceCheckStatus) => {
-    saveSystemSettings({ serviceCheckStatus: status });
+    return saveSystemSettings({ serviceCheckStatus: status });
   }, [saveSystemSettings]);
 
   const setServiceLastCheckedAt = useCallback((checkedAt: string | null) => {
-    saveSystemSettings({ serviceLastCheckedAt: checkedAt });
+    return saveSystemSettings({ serviceLastCheckedAt: checkedAt });
   }, [saveSystemSettings]);
 
   const setPublishDomain = useCallback((publishDomain: string) => {
-    saveSystemSettings({ publishDomain });
+    return saveSystemSettings({ publishDomain });
   }, [saveSystemSettings]);
 
   const setHttpsEnabled = useCallback((httpsEnabled: boolean) => {
-    saveSystemSettings({ httpsEnabled });
+    return saveSystemSettings({ httpsEnabled });
   }, [saveSystemSettings]);
 
   const resetSettingsDefaults = useCallback(() => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.resetSettings({
           state: stateRef.current,
-        })
+        }),
+      { refreshAfterSuccess: true }
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const resetLocalData = useCallback(() => {
-    void runStateReplacement(
+    return runMutation(
       () =>
         appDataRepository.resetAppData({
           fallbackState: createDefaultAppDataState(),
         })
     );
-  }, [runStateReplacement]);
+  }, [runMutation]);
 
   const normalizedState = normalizeAppDataState(state);
 
   const contextValue = useMemo<AppDataContextValue>(
     () => ({
       ...normalizedState,
+      saveSettingsPatch: saveSystemSettings,
       refreshAppData,
       setRole,
       addSource,
@@ -254,6 +291,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       normalizedState,
+      saveSystemSettings,
       refreshAppData,
       setRole,
       addSource,

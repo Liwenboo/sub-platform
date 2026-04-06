@@ -90,8 +90,8 @@ export default function SettingsPage() {
     serviceCheckStatus,
     publishDomain,
     httpsEnabled,
-    setServiceCheckStatus,
-    setServiceLastCheckedAt,
+    refreshAppData,
+    saveSettingsPatch,
     setDefaultSourceId,
     setDefaultOutputFormat,
     setUrlTokenEnabled,
@@ -106,6 +106,7 @@ export default function SettingsPage() {
   const router = useRouter();
 
   const [feedbackStatus, setFeedbackStatus] = useState<FeedbackStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const checkTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -136,23 +137,43 @@ export default function SettingsPage() {
       window.clearTimeout(checkTimerRef.current);
     }
 
-    setServiceCheckStatus("checking");
+    setErrorMessage(null);
+    void (async () => {
+      const result = await saveSettingsPatch({
+        serviceCheckStatus: "checking",
+        serviceLastCheckedAt: null,
+      });
+
+      if (!result.ok) {
+        setErrorMessage(result.error?.message ?? "检测连接失败，请稍后重试。");
+      }
+    })();
 
     checkTimerRef.current = window.setTimeout(() => {
       const maybeSuccess =
         serviceUrl.startsWith("http") && apiPath.length > 0 && Math.random() > 0.25;
 
-      setServiceCheckStatus(maybeSuccess ? "success" : "failed");
-      setServiceLastCheckedAt(formatDateTime(new Date()));
+      void (async () => {
+        const result = await saveSettingsPatch({
+          serviceCheckStatus: maybeSuccess ? "success" : "failed",
+          serviceLastCheckedAt: formatDateTime(new Date()),
+        });
+
+        if (!result.ok) {
+          setErrorMessage(result.error?.message ?? "更新连接检测结果失败，请稍后重试。");
+        }
+      })();
       checkTimerRef.current = null;
     }, 900);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canEditSettings) {
       return;
     }
 
+    setErrorMessage(null);
+    await refreshAppData();
     setFeedbackStatus("saved");
 
     if (feedbackTimerRef.current) {
@@ -164,7 +185,7 @@ export default function SettingsPage() {
     }, 2000);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!canEditSettings) {
       return;
     }
@@ -174,7 +195,13 @@ export default function SettingsPage() {
       checkTimerRef.current = null;
     }
 
-    resetSettingsDefaults();
+    setErrorMessage(null);
+    const result = await resetSettingsDefaults();
+    if (!result.ok) {
+      setErrorMessage(result.error?.message ?? "恢复默认设置失败，请稍后重试。");
+      return;
+    }
+
     setFeedbackStatus("reset");
 
     if (feedbackTimerRef.current) {
@@ -186,7 +213,7 @@ export default function SettingsPage() {
     }, 2000);
   };
 
-  const handleResetLocalData = () => {
+  const handleResetLocalData = async () => {
     if (!canEditSettings) {
       return;
     }
@@ -196,7 +223,13 @@ export default function SettingsPage() {
       checkTimerRef.current = null;
     }
 
-    resetLocalData();
+    setErrorMessage(null);
+    const result = await resetLocalData();
+    if (!result.ok) {
+      setErrorMessage(result.error?.message ?? "重置本地数据失败，请稍后重试。");
+      return;
+    }
+
     setFeedbackStatus("local_reset");
 
     if (feedbackTimerRef.current) {
@@ -415,6 +448,9 @@ export default function SettingsPage() {
             )}
             {feedbackStatus === "local_reset" && (
               <span className="text-sm text-rose-700">{copy.feedback.localReset}</span>
+            )}
+            {errorMessage && (
+              <span className="text-sm text-rose-700">{errorMessage}</span>
             )}
           </div>
         </section>

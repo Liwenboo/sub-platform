@@ -223,6 +223,11 @@ export default function SourcesPage() {
   const [importPreviews, setImportPreviews] = useState<SourceImportPreviewItem[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const pendingDeleteSource = useMemo(
     () => sources.find((item) => item.id === pendingDeleteId) ?? null,
@@ -249,6 +254,7 @@ export default function SourcesPage() {
     setImportOpen(false);
     setImportError(null);
     setImportSuccess(null);
+    setFormError(null);
     setFormMode("create");
     setEditingId(null);
     setFormValues(createEmptySourceFormValues());
@@ -264,6 +270,7 @@ export default function SourcesPage() {
     setImportOpen(true);
     setImportError(null);
     setImportSuccess(null);
+    setFormError(null);
   };
 
   const closeImportPanel = () => {
@@ -287,6 +294,7 @@ export default function SourcesPage() {
     setImportOpen(false);
     setImportError(null);
     setImportSuccess(null);
+    setFormError(null);
     setFormMode("edit");
     setEditingId(source.id);
     setFormValues({
@@ -301,13 +309,16 @@ export default function SourcesPage() {
     setFormMode(null);
     setEditingId(null);
     setFormValues(createEmptySourceFormValues());
+    setFormError(null);
   };
 
-  const onSubmitForm = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmitForm = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canEditSources) {
       return;
     }
+
+    setFormError(null);
 
     const nextItem = {
       name: formValues.name.trim(),
@@ -318,16 +329,25 @@ export default function SourcesPage() {
     };
 
     if (!nextItem.name || !nextItem.url) {
+      setFormError("请填写名称和订阅地址。");
       return;
     }
 
-    if (isEditing && editingId) {
-      updateSource(editingId, nextItem);
-    } else {
-      addSource({
-        id: `src-${Date.now()}`,
-        ...nextItem,
-      });
+    setFormSubmitting(true);
+
+    const result =
+      isEditing && editingId
+        ? await updateSource(editingId, nextItem)
+        : await addSource({
+            id: `src-${Date.now()}`,
+            ...nextItem,
+          });
+
+    setFormSubmitting(false);
+
+    if (!result.ok) {
+      setFormError(result.error?.message ?? "保存订阅源失败，请稍后重试。");
+      return;
     }
 
     closeForm();
@@ -353,7 +373,7 @@ export default function SourcesPage() {
     setImportSuccess(null);
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!canEditSources) {
       return;
     }
@@ -367,8 +387,10 @@ export default function SourcesPage() {
     const now = formatNow();
     const nowSeed = Date.now();
 
-    importPreviews.forEach((item, index) => {
-      addSource({
+    setImportSubmitting(true);
+
+    for (const [index, item] of importPreviews.entries()) {
+      const result = await addSource({
         id: `src-import-${nowSeed}-${index}`,
         name: item.name,
         url: item.raw,
@@ -376,7 +398,16 @@ export default function SourcesPage() {
         status: "online",
         updatedAt: now,
       });
-    });
+
+      if (!result.ok) {
+        setImportSubmitting(false);
+        setImportSuccess(null);
+        setImportError(result.error?.message ?? "导入订阅源失败，请稍后重试。");
+        return;
+      }
+    }
+
+    setImportSubmitting(false);
 
     setImportInput({ link: "", text: "" });
     setImportPreviews([]);
@@ -391,19 +422,30 @@ export default function SourcesPage() {
       return;
     }
 
+    setDeleteError(null);
     setPendingDeleteId(id);
   };
 
   const cancelDelete = () => {
+    setDeleteError(null);
     setPendingDeleteId(null);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!canEditSources || !pendingDeleteId) {
       return;
     }
 
-    deleteSource(pendingDeleteId);
+    setDeleteError(null);
+    setDeleteSubmitting(true);
+    const result = await deleteSource(pendingDeleteId);
+    setDeleteSubmitting(false);
+
+    if (!result.ok) {
+      setDeleteError(result.error?.message ?? "删除订阅源失败，请稍后重试。");
+      return;
+    }
+
     if (editingId === pendingDeleteId) {
       closeForm();
     }
@@ -605,12 +647,18 @@ export default function SourcesPage() {
                 </div>
 
                 <div className="mt-5 flex items-center justify-end border-t border-slate-200 pt-4">
+                  {importError && (
+                    <p className="mr-auto rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                      {importError}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={handleConfirmImport}
+                    disabled={importSubmitting}
                     className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
                   >
-                    {copy.import.confirmImport}
+                    {importSubmitting ? "导入中..." : copy.import.confirmImport}
                   </button>
                 </div>
               </div>
@@ -685,12 +733,18 @@ export default function SourcesPage() {
                   <option value="paused">{getSourceStatusLabel("paused")}</option>
                 </select>
               </label>
+              {formError && (
+                <p className="md:col-span-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {formError}
+                </p>
+              )}
               <div className="flex items-end gap-3">
                 <button
                   type="submit"
+                  disabled={formSubmitting}
                   className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
                 >
-                  {copy.form.save}
+                  {formSubmitting ? "保存中..." : copy.form.save}
                 </button>
                 <button
                   type="button"
@@ -707,20 +761,28 @@ export default function SourcesPage() {
         {canEditSources && pendingDeleteSource && (
           <section className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-rose-700">
-                {copy.deletePrompt}{" "}
-                <span className="font-medium">
-                  &quot;{pendingDeleteSource.name}&quot;
-                </span>
-                ?
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm text-rose-700">
+                  {copy.deletePrompt}{" "}
+                  <span className="font-medium">
+                    &quot;{pendingDeleteSource.name}&quot;
+                  </span>
+                  ?
+                </p>
+                {deleteError && (
+                  <p className="rounded-lg border border-rose-200 bg-white/70 px-3 py-2 text-sm text-rose-700">
+                    {deleteError}
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={confirmDelete}
+                  disabled={deleteSubmitting}
                   className="inline-flex h-8 items-center rounded-lg bg-rose-600 px-3 text-xs font-medium text-white transition-colors hover:bg-rose-700"
                 >
-                  {copy.actions.confirmDelete}
+                  {deleteSubmitting ? "删除中..." : copy.actions.confirmDelete}
                 </button>
                 <button
                   type="button"
