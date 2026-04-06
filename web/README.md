@@ -1,5 +1,7 @@
 # sub-platform
 
+生产部署与日常发布维护见：[DEPLOY.md](/d:/Codex/sub-platform/web/DEPLOY.md)
+
 基于 Next.js 的轻量订阅管理平台，当前版本已经包含：
 
 - admin 登录态与最小权限控制
