@@ -13,6 +13,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function getLogPreview(value: string, maxLength = 300): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
 function textResponse(message: string, status: number, headers?: HeadersInit): Response {
   return new Response(message, {
     status,
@@ -65,6 +74,7 @@ export async function GET(request: Request) {
   }
 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
+  console.info(`[output/raw] requested source ids="${sourceParam}"`);
   if (!sourceParam) {
     return textResponse('Missing required "source" query parameter.', 400);
   }
@@ -86,9 +96,13 @@ export async function GET(request: Request) {
   const rawSources = selectedSourcesResult.sources.filter(
     (source) => source.sourceType === "raw"
   );
+  console.info(
+    `[output/raw] resolved_sources=${selectedSourcesResult.sources.length} raw_sources=${rawSources.length}`
+  );
   const { entries, skippedCount } = collectValidRawSourceEntries(rawSources);
 
   if (entries.length === 0) {
+    console.error(`[output/raw] no valid raw node entries found for source ids="${sourceParam}"`);
     return textResponse("No valid raw source entries found.", 400);
   }
 
@@ -101,7 +115,14 @@ export async function GET(request: Request) {
     headers.set("x-sub-platform-skipped-lines", String(skippedCount));
   }
 
-  return new Response(`${entries.join("\n")}\n`, {
+  const responseBody = `${entries.join("\n")}\n`;
+  console.info(
+    `[output/raw] returning entries=${entries.length} skipped=${skippedCount} length=${responseBody.length} body_preview="${getLogPreview(
+      responseBody
+    )}"`
+  );
+
+  return new Response(responseBody, {
     status: 200,
     headers,
   });

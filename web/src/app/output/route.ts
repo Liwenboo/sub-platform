@@ -131,7 +131,7 @@ function buildUpstreamUrl(
 
   if (rawSources.length > 0) {
     const rawSourceParam = rawSources.map((source) => source.id).join(",");
-    const rawSourceUrl = new URL("/output/raw", getRequestOrigin(request));
+    const rawSourceUrl = new URL("/output/raw", getRequestOrigin());
     rawSourceUrl.searchParams.set("source", rawSourceParam);
 
     const token = requestUrl.searchParams.get("token")?.trim();
@@ -182,6 +182,10 @@ function buildUpstreamUrl(
   return {
     ok: true as const,
     data: upstreamUrl,
+    rawSourceUrl:
+      rawSources.length > 0
+        ? selectedSourceValues[selectedSourceValues.length - 1] ?? null
+        : null,
   };
 }
 
@@ -233,6 +237,30 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   );
   if (!upstreamUrlResult.ok) {
     return upstreamUrlResult.response;
+  }
+
+  if (upstreamUrlResult.rawSourceUrl) {
+    try {
+      const rawPreviewResponse = await fetch(upstreamUrlResult.rawSourceUrl, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Accept: "text/plain, */*",
+        },
+      });
+      const rawPreviewBody = await rawPreviewResponse.text();
+      console.info(
+        `[output] raw source probe status=${rawPreviewResponse.status} length=${rawPreviewBody.length} url=${maskSensitiveUrlForLog(
+          upstreamUrlResult.rawSourceUrl
+        )} body_preview="${getLogPreview(rawPreviewBody)}"`
+      );
+    } catch {
+      console.error(
+        `[output] failed to prefetch raw source url ${maskSensitiveUrlForLog(
+          upstreamUrlResult.rawSourceUrl
+        )}`
+      );
+    }
   }
 
   let upstreamResponse: Response;
