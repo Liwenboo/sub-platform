@@ -27,9 +27,13 @@ type SessionResponse = {
   } | null;
 };
 
+const ADMIN_HOME_PATH = "/sources";
+const LOGIN_SYNC_RETRY_COUNT = 3;
+const LOGIN_SYNC_RETRY_DELAY_MS = 120;
+
 function normalizeNextPath(input: string | null): string {
   if (!input || !input.startsWith("/") || input.startsWith("//")) {
-    return "/";
+    return ADMIN_HOME_PATH;
   }
 
   return input;
@@ -38,7 +42,7 @@ function normalizeNextPath(input: string | null): string {
 export default function LoginPage() {
   const router = useRouter();
   const { refreshAppData } = useAppData();
-  const [nextPath, setNextPath] = useState("/");
+  const [nextPath, setNextPath] = useState(ADMIN_HOME_PATH);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -50,6 +54,7 @@ export default function LoginPage() {
       const response = await fetch("/api/auth/session", {
         method: "GET",
         cache: "no-store",
+        credentials: "same-origin",
       });
 
       return (await response.json()) as SessionResponse;
@@ -57,6 +62,28 @@ export default function LoginPage() {
       return null;
     }
   }, []);
+
+  const syncAdminSessionState = useCallback(async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < LOGIN_SYNC_RETRY_COUNT; attempt += 1) {
+      const sessionPayload = await fetchSession();
+      const roleAfterRefresh = await refreshAppData();
+
+      if (
+        sessionPayload?.success &&
+        sessionPayload.data?.authenticated &&
+        sessionPayload.data.role === "admin" &&
+        roleAfterRefresh === "admin"
+      ) {
+        return true;
+      }
+
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, LOGIN_SYNC_RETRY_DELAY_MS);
+      });
+    }
+
+    return false;
+  }, [fetchSession, refreshAppData]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -90,7 +117,11 @@ export default function LoginPage() {
         }
 
         if (payload.success && payload.data?.role === "admin") {
-          await refreshAppData();
+          const synced = await syncAdminSessionState();
+          if (!synced) {
+            return;
+          }
+
           router.replace(nextPath);
           router.refresh();
         }
@@ -104,7 +135,7 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
-  }, [fetchSession, nextPath, refreshAppData, router]);
+  }, [fetchSession, nextPath, router, syncAdminSessionState]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -130,21 +161,12 @@ export default function LoginPage() {
         return;
       }
 
-      const sessionPayload = await fetchSession();
-      if (
-        !sessionPayload?.success ||
-        !sessionPayload.data?.authenticated ||
-        sessionPayload.data.role !== "admin"
-      ) {
+      const synced = await syncAdminSessionState();
+      if (!synced) {
         setErrorMessage("登录状态同步失败，请重试。");
         return;
       }
 
-      const roleAfterRefresh = await refreshAppData();
-      if (roleAfterRefresh !== "admin") {
-        setErrorMessage("登录状态同步失败，请重试。");
-        return;
-      }
       router.replace(nextPath);
       router.refresh();
     } catch {
