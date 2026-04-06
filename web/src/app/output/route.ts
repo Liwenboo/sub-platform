@@ -131,7 +131,7 @@ function buildUpstreamUrl(
 
   if (rawSources.length > 0) {
     const rawSourceParam = rawSources.map((source) => source.id).join(",");
-    const rawSourceUrl = new URL("/output/raw", getRequestOrigin());
+    const rawSourceUrl = new URL("/output/raw", getRequestOrigin(request));
     rawSourceUrl.searchParams.set("source", rawSourceParam);
 
     const token = requestUrl.searchParams.get("token")?.trim();

@@ -30,7 +30,7 @@ function buildRawSourcePayload(sourceParam: string, issuedAtSeconds: number): st
   return `${sourceParam}\n${issuedAtSeconds}`;
 }
 
-export function getRequestOrigin(): string {
+export function getRequestOrigin(request: Request): string {
   const configuredOrigin =
     readEnvValue([
       "INTERNAL_APP_ORIGIN",
@@ -42,8 +42,7 @@ export function getRequestOrigin(): string {
     return configuredOrigin.replace(/\/+$/, "");
   }
 
-  const internalPort = readEnvValue(["PORT", "SUB_PLATFORM_PORT"]) ?? "3000";
-  return `http://127.0.0.1:${internalPort}`;
+  return getPublicRequestOrigin(request).replace(/\/+$/, "");
 }
 
 export function getPublicRequestOrigin(request: Request): string {
