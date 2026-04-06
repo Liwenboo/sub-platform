@@ -198,6 +198,8 @@ export function createRemoteAppDataClient(
             headers,
             body: shouldSendJsonBody ? JSON.stringify(requestBody) : undefined,
             signal: controller.signal,
+            cache: "no-store",
+            credentials: "same-origin",
           });
         } finally {
           globalThis.clearTimeout(timeoutId);

@@ -35,7 +35,7 @@ export type {
 } from "../_types/app-types";
 
 type AppDataContextValue = AppDataState & {
-  refreshAppData: () => Promise<void>;
+  refreshAppData: () => Promise<UserRole>;
   setRole: (role: UserRole) => void;
   addSource: (source: SourceItem) => void;
   updateSource: (id: string, source: Omit<SourceItem, "id">) => void;
@@ -101,12 +101,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [logRepositoryError, resolveRepositoryCall]
   );
 
-  const refreshAppData = useCallback(async () => {
-    await runStateReplacement(() =>
+  const refreshAppData = useCallback(async (): Promise<UserRole> => {
+    const result = await runStateReplacement(() =>
       appDataRepository.loadAppData({
         fallbackState: stateRef.current,
       })
     );
+
+    return normalizeAppDataState(result.state).role;
   }, [runStateReplacement]);
 
   useEffect(() => {

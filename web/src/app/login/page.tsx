@@ -140,7 +140,11 @@ export default function LoginPage() {
         return;
       }
 
-      await refreshAppData();
+      const roleAfterRefresh = await refreshAppData();
+      if (roleAfterRefresh !== "admin") {
+        setErrorMessage("登录状态同步失败，请重试。");
+        return;
+      }
       router.replace(nextPath);
       router.refresh();
     } catch {
