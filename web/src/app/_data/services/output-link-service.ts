@@ -61,24 +61,15 @@ export function buildOutputLink(params: OutputLinkBuildParams): string {
   }
 
   if (typeof params.emojiEnabled === "boolean") {
-    query.set("emoji", params.emojiEnabled ? "1" : "0");
+    query.set("emoji", params.emojiEnabled ? "true" : "false");
   }
 
   if (typeof params.udpEnabled === "boolean") {
-    query.set("udp", params.udpEnabled ? "1" : "0");
+    query.set("udp", params.udpEnabled ? "true" : "false");
   }
 
   if (typeof params.tfoEnabled === "boolean") {
-    query.set("tfo", params.tfoEnabled ? "1" : "0");
-  }
-
-  if (params.sortMode) {
-    query.set("sort", params.sortMode);
-  }
-
-  const trimmedOutputName = params.outputName?.trim();
-  if (trimmedOutputName) {
-    query.set("name", trimmedOutputName);
+    query.set("tfo", params.tfoEnabled ? "true" : "false");
   }
 
   return `${protocol}://${normalizedDomain}/output?${query.toString()}`;

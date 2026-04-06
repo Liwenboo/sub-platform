@@ -26,9 +26,23 @@ const FORWARDED_QUERY_KEYS = new Set([
   "emoji",
   "udp",
   "tfo",
-  "sort",
-  "name",
 ]);
+
+function maskSensitiveUrlForLog(input: string): string {
+  return input.replace(
+    /([?&](?:token|sig)=)[^&]*/gi,
+    "$1***"
+  );
+}
+
+function getLogPreview(value: string, maxLength = 400): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength)}...`;
+}
 
 function textResponse(
   message: string,
@@ -222,6 +236,8 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   }
 
   let upstreamResponse: Response;
+  const maskedUpstreamUrl = maskSensitiveUrlForLog(upstreamUrlResult.data.toString());
+  console.info(`[output] proxying request to subconverter: ${maskedUpstreamUrl}`);
   try {
     upstreamResponse = await fetch(upstreamUrlResult.data, {
       method: "GET",
@@ -235,8 +251,16 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   }
 
   const upstreamBody = await upstreamResponse.text();
+  console.info(
+    `[output] subconverter response status=${upstreamResponse.status} body_preview="${getLogPreview(
+      upstreamBody
+    )}"`
+  );
 
   if (!upstreamResponse.ok) {
+    console.error(
+      `[output] subconverter upstream returned HTTP ${upstreamResponse.status} for ${maskedUpstreamUrl}`
+    );
     return textResponse(
       `Subconverter upstream returned HTTP ${upstreamResponse.status}.`,
       502
