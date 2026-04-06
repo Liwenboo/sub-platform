@@ -13,6 +13,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function encodeBase64Subscription(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
+}
+
 function getLogPreview(value: string, maxLength = 300): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
@@ -74,7 +78,11 @@ export async function GET(request: Request) {
   }
 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
-  console.info(`[output/raw] requested source ids="${sourceParam}"`);
+  const encoding = requestUrl.searchParams.get("encoding")?.trim().toLowerCase() ?? "plain";
+  const useBase64Encoding = encoding === "base64";
+  console.info(
+    `[output/raw] requested source ids="${sourceParam}" encoding=${useBase64Encoding ? "base64" : "plain"}`
+  );
   if (!sourceParam) {
     return textResponse('Missing required "source" query parameter.', 400);
   }
@@ -115,11 +123,14 @@ export async function GET(request: Request) {
     headers.set("x-sub-platform-skipped-lines", String(skippedCount));
   }
 
-  const responseBody = `${entries.join("\n")}\n`;
+  const plainTextBody = `${entries.join("\n")}\n`;
+  const responseBody = useBase64Encoding
+    ? `${encodeBase64Subscription(plainTextBody)}\n`
+    : plainTextBody;
   console.info(
-    `[output/raw] returning entries=${entries.length} skipped=${skippedCount} length=${responseBody.length} body_preview="${getLogPreview(
-      responseBody
-    )}"`
+    `[output/raw] returning entries=${entries.length} skipped=${skippedCount} mode=${
+      useBase64Encoding ? "base64" : "plain"
+    } length=${responseBody.length} body_preview="${getLogPreview(responseBody)}"`
   );
 
   return new Response(responseBody, {

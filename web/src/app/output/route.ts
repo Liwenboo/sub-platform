@@ -133,6 +133,7 @@ function buildUpstreamUrl(
     const rawSourceParam = rawSources.map((source) => source.id).join(",");
     const rawSourceUrl = new URL("/output/raw", getRequestOrigin(request));
     rawSourceUrl.searchParams.set("source", rawSourceParam);
+    rawSourceUrl.searchParams.set("encoding", "base64");
 
     const token = requestUrl.searchParams.get("token")?.trim();
     if (token) {
@@ -250,7 +251,7 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
       });
       const rawPreviewBody = await rawPreviewResponse.text();
       console.info(
-        `[output] raw source probe status=${rawPreviewResponse.status} length=${rawPreviewBody.length} url=${maskSensitiveUrlForLog(
+        `[output] raw source probe mode=base64-remote-url status=${rawPreviewResponse.status} length=${rawPreviewBody.length} url=${maskSensitiveUrlForLog(
           upstreamUrlResult.rawSourceUrl
         )} body_preview="${getLogPreview(rawPreviewBody)}"`
       );
@@ -265,7 +266,9 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
   let upstreamResponse: Response;
   const maskedUpstreamUrl = maskSensitiveUrlForLog(upstreamUrlResult.data.toString());
-  console.info(`[output] proxying request to subconverter: ${maskedUpstreamUrl}`);
+  console.info(
+    `[output] proxying request to subconverter mode=base64-remote-url: ${maskedUpstreamUrl}`
+  );
   try {
     upstreamResponse = await fetch(upstreamUrlResult.data, {
       method: "GET",
