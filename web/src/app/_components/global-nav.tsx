@@ -16,6 +16,33 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function NovaRabbitLogoMark() {
+  return (
+    <svg
+      viewBox="0 0 1024 1024"
+      className="h-11 w-11 text-slate-950"
+      aria-hidden
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M240 374L389 187L512 350L640 187L789 374"
+        stroke="currentColor"
+        strokeWidth="34"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M512 352L318 628L512 904L706 628L512 352Z"
+        stroke="currentColor"
+        strokeWidth="34"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function GlobalNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -94,10 +121,7 @@ export function GlobalNav() {
           <div className="flex items-center justify-between gap-10 px-6 py-3.5 md:px-8">
             <div className="flex shrink-0 items-center gap-3">
               <div className="flex w-12 flex-col items-center">
-                <div
-                  className="h-9 w-9 rounded-lg border border-slate-300 bg-slate-50"
-                  aria-hidden
-                />
+                <NovaRabbitLogoMark />
                 <span className="mt-1 text-[10px] leading-none text-slate-500">
                   NovaRabbit
                 </span>
