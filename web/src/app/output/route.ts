@@ -1,12 +1,15 @@
 import { cookies } from "next/headers";
-import { getSourceDisplayValue } from "../_data/services/source-entry-service";
+import {
+  getSourceDisplayValue,
+  parseSourceInput,
+} from "../_data/services/source-entry-service";
 import { mockAppDataStore } from "../../server/mock-data/app-data-store";
 import {
   AUTH_SESSION_COOKIE_NAME,
   getSessionFromToken,
   isViewerAnonymousAccessAllowed,
 } from "../../server/auth/session";
-import type { OutputFormatId } from "../_types/app-types";
+import type { OutputFormatId, SourceItem } from "../_types/app-types";
 import {
   collectValidRawSourceEntries,
   createRawSourceAccessSignature,
@@ -97,13 +100,200 @@ type OutputRequestPlan =
       resolvedSourceCount: number;
       remoteSourceCount: number;
       rawSourceCount: number;
+      rawSources: SourceItem[];
+      remoteSources: SourceItem[];
       useSubconverter: boolean;
       useRawBypass: boolean;
       rawSourceUrl: string | null;
       upstreamUrl: URL | null;
-      responseBody: string | null;
-      responseHeaders: HeadersInit | null;
     };
+
+type V2rayBypassResult = {
+  ok: boolean;
+  status: number;
+  responseBody: string | null;
+  responseHeaders: Headers;
+  fetchedRemoteCount: number;
+  remoteFetchStatuses: string[];
+  skippedRawCount: number;
+  skippedRemoteCount: number;
+  errorMessage?: string;
+};
+
+function normalizeSubscriptionText(value: string): string {
+  return value.replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+}
+
+function tryDecodeBase64Subscription(value: string): string | null {
+  const normalized = value.replace(/\s+/g, "");
+  if (!normalized || normalized.length % 4 === 1) {
+    return null;
+  }
+
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(normalized)) {
+    return null;
+  }
+
+  try {
+    const base64Value = normalized.replace(/-/g, "+").replace(/_/g, "/");
+    const paddingLength = (4 - (base64Value.length % 4 || 4)) % 4;
+    const paddedValue = `${base64Value}${"=".repeat(paddingLength)}`;
+    const decoded = Buffer.from(paddedValue, "base64").toString("utf8");
+    const normalizedDecoded = normalizeSubscriptionText(decoded);
+
+    return normalizedDecoded || null;
+  } catch {
+    return null;
+  }
+}
+
+function collectValidEntriesFromSubscriptionText(content: string) {
+  const normalizedContent = normalizeSubscriptionText(content);
+  if (!normalizedContent) {
+    return {
+      entries: [] as string[],
+      skippedCount: 0,
+    };
+  }
+
+  const lines = normalizedContent
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const entries: string[] = [];
+  let skippedCount = 0;
+
+  for (const line of lines) {
+    const parsed = parseSourceInput(line);
+    if (!parsed || parsed.sourceType !== "raw") {
+      skippedCount += 1;
+      continue;
+    }
+
+    entries.push(line);
+  }
+
+  return {
+    entries: Array.from(new Set(entries)),
+    skippedCount,
+  };
+}
+
+function collectRemoteSubscriptionEntries(content: string) {
+  const plainResult = collectValidEntriesFromSubscriptionText(content);
+  if (plainResult.entries.length > 0) {
+    return plainResult;
+  }
+
+  const decodedContent = tryDecodeBase64Subscription(content);
+  if (!decodedContent) {
+    return plainResult;
+  }
+
+  const decodedResult = collectValidEntriesFromSubscriptionText(decodedContent);
+  if (decodedResult.entries.length > 0) {
+    return decodedResult;
+  }
+
+  return plainResult;
+}
+
+async function buildV2rayBypassResult(
+  rawSources: SourceItem[],
+  remoteSources: SourceItem[]
+): Promise<V2rayBypassResult> {
+  const rawResult = collectValidRawSourceEntries(rawSources);
+  const mergedEntries = [...rawResult.entries];
+  const remoteFetchStatuses: string[] = [];
+  let fetchedRemoteCount = 0;
+  let skippedRemoteCount = 0;
+
+  for (const source of remoteSources) {
+    const remoteUrl = getSourceDisplayValue(source);
+    const maskedRemoteUrl = maskSensitiveValueForLog(remoteUrl);
+
+    try {
+      const remoteResponse = await fetch(remoteUrl, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Accept: "text/plain, */*",
+        },
+      });
+
+      remoteFetchStatuses.push(`${source.id}:${remoteResponse.status}`);
+
+      if (!remoteResponse.ok) {
+        console.error(
+          `[output] v2ray remote fetch failed source=${source.id} status=${remoteResponse.status} url=${maskedRemoteUrl}`
+        );
+        continue;
+      }
+
+      const remoteBody = await remoteResponse.text();
+      const remoteEntriesResult = collectRemoteSubscriptionEntries(remoteBody);
+      if (remoteEntriesResult.entries.length === 0) {
+        console.warn(
+          `[output] v2ray remote fetch returned no valid nodes source=${source.id} status=${remoteResponse.status} url=${maskedRemoteUrl} body_preview="${getLogPreview(
+            remoteBody
+          )}"`
+        );
+        skippedRemoteCount += remoteEntriesResult.skippedCount;
+        continue;
+      }
+
+      fetchedRemoteCount += 1;
+      skippedRemoteCount += remoteEntriesResult.skippedCount;
+      mergedEntries.push(...remoteEntriesResult.entries);
+    } catch {
+      remoteFetchStatuses.push(`${source.id}:fetch_error`);
+      console.error(
+        `[output] v2ray remote fetch error source=${source.id} url=${maskedRemoteUrl}`
+      );
+    }
+  }
+
+  const normalizedEntries = Array.from(new Set(mergedEntries));
+  if (normalizedEntries.length === 0) {
+    return {
+      ok: false,
+      status: 400,
+      responseBody: null,
+      responseHeaders: new Headers({
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      }),
+      fetchedRemoteCount,
+      remoteFetchStatuses,
+      skippedRawCount: rawResult.skippedCount,
+      skippedRemoteCount,
+      errorMessage: "No valid raw or remote subscription entries found.",
+    };
+  }
+
+  const plainTextBody = `${normalizedEntries.join("\n")}\n`;
+  const responseBody = `${encodeBase64Subscription(plainTextBody)}\n`;
+  const responseHeaders = new Headers({
+    "content-type": "text/plain; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  const skippedTotal = rawResult.skippedCount + skippedRemoteCount;
+
+  if (skippedTotal > 0) {
+    responseHeaders.set("x-sub-platform-skipped-lines", String(skippedTotal));
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    responseBody,
+    responseHeaders,
+    fetchedRemoteCount,
+    remoteFetchStatuses,
+    skippedRawCount: rawResult.skippedCount,
+    skippedRemoteCount,
+  };
+}
 
 function buildOutputRequestPlan(
   request: Request,
@@ -168,41 +358,6 @@ function buildOutputRequestPlan(
   const target = OUTPUT_FORMAT_TARGET_MAP[format as OutputFormatId];
 
   if (RAW_BYPASS_FORMATS.has(format as OutputFormatId)) {
-    if (remoteSources.length > 0) {
-      console.warn(
-        `[output] raw bypass rejected target=${target} requested_sources=${requestedSourceCount} resolved_sources=${selectedSourcesResult.sources.length} remote_sources=${remoteSources.length} raw_sources=${rawSources.length}`
-      );
-      return {
-        ok: false,
-        response: textResponse(
-          "V2Ray output bypass only supports raw node sources.",
-          400
-        ),
-      };
-    }
-
-    const { entries, skippedCount } = collectValidRawSourceEntries(rawSources);
-    if (entries.length === 0) {
-      console.warn(
-        `[output] raw bypass found no valid entries target=${target} requested_sources=${requestedSourceCount} resolved_sources=${selectedSourcesResult.sources.length} remote_sources=${remoteSources.length} raw_sources=${rawSources.length}`
-      );
-      return {
-        ok: false,
-        response: textResponse("No valid raw source entries found.", 400),
-      };
-    }
-
-    const plainTextBody = `${entries.join("\n")}\n`;
-    const responseBody = `${encodeBase64Subscription(plainTextBody)}\n`;
-    const responseHeaders = new Headers({
-      "content-type": "text/plain; charset=utf-8",
-      "cache-control": "no-store",
-    });
-
-    if (skippedCount > 0) {
-      responseHeaders.set("x-sub-platform-skipped-lines", String(skippedCount));
-    }
-
     return {
       ok: true,
       format: format as OutputFormatId,
@@ -211,12 +366,12 @@ function buildOutputRequestPlan(
       resolvedSourceCount: selectedSourcesResult.sources.length,
       remoteSourceCount: remoteSources.length,
       rawSourceCount: rawSources.length,
+      rawSources,
+      remoteSources,
       useSubconverter: false,
       useRawBypass: true,
       rawSourceUrl: null,
       upstreamUrl: null,
-      responseBody,
-      responseHeaders,
     };
   }
 
@@ -276,6 +431,8 @@ function buildOutputRequestPlan(
     resolvedSourceCount: selectedSourcesResult.sources.length,
     remoteSourceCount: remoteSources.length,
     rawSourceCount: rawSources.length,
+    rawSources,
+    remoteSources,
     useSubconverter: true,
     useRawBypass: false,
     upstreamUrl,
@@ -283,8 +440,6 @@ function buildOutputRequestPlan(
       rawSources.length > 0
         ? selectedSourceValues[selectedSourceValues.length - 1] ?? null
         : null,
-    responseBody: null,
-    responseHeaders: null,
   };
 }
 
@@ -342,19 +497,34 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   );
 
   if (outputPlan.useRawBypass) {
-    const responseBody = outputPlan.responseBody ?? "";
+    const bypassResult = await buildV2rayBypassResult(
+      outputPlan.rawSources,
+      outputPlan.remoteSources
+    );
+    const remoteFetchStatusValue =
+      bypassResult.remoteFetchStatuses.length > 0
+        ? bypassResult.remoteFetchStatuses.join(",")
+        : "none";
+
+    if (!bypassResult.ok) {
+      console.error(
+        `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+          bypassResult.errorMessage ?? ""
+        )}"`
+      );
+      return textResponse(bypassResult.errorMessage ?? "Invalid subscription content.", bypassResult.status);
+    }
+
+    const responseBody = bypassResult.responseBody ?? "";
     console.info(
-      `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+      `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
         responseBody
       )}"`
     );
 
     return new Response(headOnly ? null : responseBody, {
-      status: 200,
-      headers: outputPlan.responseHeaders ?? {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "no-store",
-      },
+      status: bypassResult.status,
+      headers: bypassResult.responseHeaders,
     });
   }
 
