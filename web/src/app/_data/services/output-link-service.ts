@@ -3,6 +3,7 @@ import type { OutputFormatId, SourceItem } from "../../_types/app-types";
 export type OutputLinkBuildParams = {
   selectedFormat: OutputFormatId;
   selectedSourceIds: string[];
+  includeAllSources?: boolean;
   publishDomain: string;
   httpsEnabled: boolean;
   urlTokenEnabled: boolean;
@@ -47,10 +48,13 @@ export function buildOutputLink(params: OutputLinkBuildParams): string {
   const protocol = params.httpsEnabled ? "https" : "http";
   const query = new URLSearchParams();
   query.set("format", params.selectedFormat);
-  query.set(
-    "source",
-    params.selectedSourceIds.length > 0 ? params.selectedSourceIds.join(",") : "none"
-  );
+
+  if (!params.includeAllSources) {
+    query.set(
+      "source",
+      params.selectedSourceIds.length > 0 ? params.selectedSourceIds.join(",") : "none"
+    );
+  }
 
   if (typeof params.generationVersion === "number") {
     query.set("v", String(params.generationVersion));

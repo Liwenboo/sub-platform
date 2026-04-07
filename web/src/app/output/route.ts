@@ -80,14 +80,6 @@ function encodeBase64Subscription(value: string): string {
   return Buffer.from(value, "utf8").toString("base64");
 }
 
-function countRequestedSources(sourceParam: string): number {
-  return sourceParam
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .filter((value) => value !== "none").length;
-}
-
 type OutputRequestPlan =
   | {
       ok: false;
@@ -103,6 +95,7 @@ type OutputRequestPlan =
       rawSourceCount: number;
       rawSources: SourceItem[];
       remoteSources: SourceItem[];
+      usingFullSourceSet: boolean;
       useSubconverter: boolean;
       useRawBypass: boolean;
       rawSourceUrl: string | null;
@@ -117,6 +110,7 @@ type OutputAccessContext =
   | {
       ok: true;
       isAdmin: boolean;
+      accessScope: "admin" | "viewer" | "public";
     };
 
 type V2rayBypassResult = {
@@ -329,7 +323,8 @@ function buildOutputRequestPlan(
   serviceUrl: string,
   apiPath: string,
   sources: Parameters<typeof resolveSelectedSources>[1],
-  usingPublishedSnapshot: boolean
+  usingPublishedSnapshot: boolean,
+  allowAllSourcesWhenMissing: boolean
 ): OutputRequestPlan {
   const requestUrl = new URL(request.url);
   const format = requestUrl.searchParams.get("format")?.trim();
@@ -354,29 +349,39 @@ function buildOutputRequestPlan(
   }
 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
-  const requestedSourceCount = countRequestedSources(sourceParam);
-  if (!sourceParam) {
+  const requestedSourceIds = parseRequestedSourceIds(sourceParam);
+  const usingFullSourceSet =
+    allowAllSourcesWhenMissing && requestedSourceIds.length === 0;
+  const requestedSourceCount = usingFullSourceSet
+    ? sources.length
+    : requestedSourceIds.length;
+  if (!sourceParam && !usingFullSourceSet) {
     return {
       ok: false,
       response: textResponse('Missing required "source" query parameter.', 400),
     };
   }
 
-  const requestedSourceIds = parseRequestedSourceIds(sourceParam);
-  if (requestedSourceIds.length === 0) {
+  if (requestedSourceIds.length === 0 && !usingFullSourceSet) {
     return {
       ok: false,
       response: textResponse("No valid sources selected for output.", 400),
     };
   }
 
-  const selectedSourcesResult = usingPublishedSnapshot
+  const selectedSourcesResult = usingFullSourceSet
     ? {
         ok: true as const,
         missingIds: [] as string[],
-        sources: sources.filter((source) => requestedSourceIds.includes(source.id)),
+        sources,
       }
-    : resolveSelectedSources(sourceParam, sources);
+    : usingPublishedSnapshot
+      ? {
+          ok: true as const,
+          missingIds: [] as string[],
+          sources: sources.filter((source) => requestedSourceIds.includes(source.id)),
+        }
+      : resolveSelectedSources(sourceParam, sources);
 
   if (!selectedSourcesResult.ok) {
     return {
@@ -422,6 +427,7 @@ function buildOutputRequestPlan(
       rawSourceCount: rawSources.length,
       rawSources,
       remoteSources,
+      usingFullSourceSet,
       useSubconverter: false,
       useRawBypass: true,
       rawSourceUrl: null,
@@ -487,6 +493,7 @@ function buildOutputRequestPlan(
     rawSourceCount: rawSources.length,
     rawSources,
     remoteSources,
+    usingFullSourceSet,
     useSubconverter: true,
     useRawBypass: false,
     upstreamUrl,
@@ -510,6 +517,7 @@ async function canAccessOutput(
     return {
       ok: true,
       isAdmin: true,
+      accessScope: "admin",
     };
   }
 
@@ -517,6 +525,7 @@ async function canAccessOutput(
     return {
       ok: true,
       isAdmin: false,
+      accessScope: "public",
     };
   }
 
@@ -524,6 +533,7 @@ async function canAccessOutput(
     return {
       ok: true,
       isAdmin: false,
+      accessScope: "viewer",
     };
   }
 
@@ -531,6 +541,7 @@ async function canAccessOutput(
     return {
       ok: true,
       isAdmin: false,
+      accessScope: "public",
     };
   }
 
@@ -560,7 +571,8 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
     serviceUrl,
     appState.apiPath,
     effectiveSources,
-    usingPublishedSnapshot
+    usingPublishedSnapshot,
+    accessContext.accessScope === "admin"
   );
   if (!outputPlan.ok) {
     return outputPlan.response;
@@ -571,13 +583,19 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   }
 
   console.info(
-    `[output] request format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+    `[output] request format=${outputPlan.format} target=${outputPlan.target} access_scope=${
+      accessContext.accessScope
+    } publish_state=${
       usingPublishedSnapshot ? "published" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
       appState.publishedAt ?? "none"
-    } using_published_snapshot=${usingPublishedSnapshot} requested_sources=${
+    } using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${
+      outputPlan.usingFullSourceSet
+    } requested_source_count=${
       outputPlan.requestedSourceCount
-    } resolved_sources=${outputPlan.resolvedSourceCount} remote_sources=${
+    } resolved_source_count=${outputPlan.resolvedSourceCount} published_source_count=${
+      publishedSources.length
+    } remote_sources=${
       outputPlan.remoteSourceCount
     } raw_sources=${outputPlan.rawSourceCount} use_subconverter=${
       outputPlan.useSubconverter
@@ -596,13 +614,19 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
     if (!bypassResult.ok) {
       console.error(
-        `[output] response format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+        `[output] response format=${outputPlan.format} target=${outputPlan.target} access_scope=${
+          accessContext.accessScope
+        } publish_state=${
           usingPublishedSnapshot ? "published" : "draft"
         } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
           appState.publishedAt ?? "none"
-        } using_published_snapshot=${usingPublishedSnapshot} source_count=${
+        } using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${
+          outputPlan.usingFullSourceSet
+        } requested_source_count=${outputPlan.requestedSourceCount} resolved_source_count=${
           outputPlan.resolvedSourceCount
-        } raw_sources=${outputPlan.rawSourceCount} remote_sources=${
+        } published_source_count=${publishedSources.length} raw_sources=${
+          outputPlan.rawSourceCount
+        } remote_sources=${
           outputPlan.remoteSourceCount
         } fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${
           bypassResult.aliasAppliedCount
@@ -617,13 +641,19 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
     const responseBody = bypassResult.responseBody ?? "";
     console.info(
-      `[output] response format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+      `[output] response format=${outputPlan.format} target=${outputPlan.target} access_scope=${
+        accessContext.accessScope
+      } publish_state=${
         usingPublishedSnapshot ? "published" : "draft"
       } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
         appState.publishedAt ?? "none"
-      } using_published_snapshot=${usingPublishedSnapshot} source_count=${
+      } using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${
+        outputPlan.usingFullSourceSet
+      } requested_source_count=${outputPlan.requestedSourceCount} resolved_source_count=${
         outputPlan.resolvedSourceCount
-      } raw_sources=${outputPlan.rawSourceCount} remote_sources=${
+      } published_source_count=${publishedSources.length} raw_sources=${
+        outputPlan.rawSourceCount
+      } remote_sources=${
         outputPlan.remoteSourceCount
       } fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${
         bypassResult.aliasAppliedCount
@@ -688,13 +718,17 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
   const upstreamBody = await upstreamResponse.text();
   console.info(
-    `[output] response format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+    `[output] response format=${outputPlan.format} target=${outputPlan.target} access_scope=${
+      accessContext.accessScope
+    } publish_state=${
       usingPublishedSnapshot ? "published" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
       appState.publishedAt ?? "none"
-    } using_published_snapshot=${usingPublishedSnapshot} resolved_source_count=${
+    } using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${
+      outputPlan.usingFullSourceSet
+    } requested_source_count=${outputPlan.requestedSourceCount} resolved_source_count=${
       outputPlan.resolvedSourceCount
-    } raw_bypass=false upstream_status=${upstreamResponse.status} body_preview="${getLogPreview(
+    } published_source_count=${publishedSources.length} raw_bypass=false upstream_status=${upstreamResponse.status} body_preview="${getLogPreview(
       upstreamBody
     )}"`
   );

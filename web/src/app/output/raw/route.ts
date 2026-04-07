@@ -36,6 +36,7 @@ type RawSourceAccessContext =
       ok: true;
       isAdmin: boolean;
       hasSignedAccess: boolean;
+      accessScope: "admin" | "viewer" | "public";
     };
 
 function textResponse(message: string, status: number, headers?: HeadersInit): Response {
@@ -66,6 +67,7 @@ async function canAccessRawSource(
       ok: true,
       isAdmin: true,
       hasSignedAccess: false,
+      accessScope: "admin",
     };
   }
 
@@ -74,6 +76,7 @@ async function canAccessRawSource(
       ok: true,
       isAdmin: false,
       hasSignedAccess: false,
+      accessScope: "public",
     };
   }
 
@@ -82,6 +85,7 @@ async function canAccessRawSource(
       ok: true,
       isAdmin: false,
       hasSignedAccess: false,
+      accessScope: "viewer",
     };
   }
 
@@ -90,6 +94,7 @@ async function canAccessRawSource(
       ok: true,
       isAdmin: false,
       hasSignedAccess: false,
+      accessScope: "public",
     };
   }
 
@@ -101,6 +106,7 @@ async function canAccessRawSource(
       ok: true,
       isAdmin: false,
       hasSignedAccess: true,
+      accessScope: "public",
     };
   }
 
@@ -121,31 +127,44 @@ export async function GET(request: Request) {
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
   const encoding = requestUrl.searchParams.get("encoding")?.trim().toLowerCase() ?? "plain";
   const useBase64Encoding = encoding === "base64";
+  const requestedSourceIds = sourceParam
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => value !== "none");
+  const usingPublishedSnapshot =
+    !accessContext.isAdmin && !accessContext.hasSignedAccess;
+  const publishedSources = getPublishedSources(appState);
+  const availableSources = usingPublishedSnapshot ? publishedSources : appState.sources;
+  const usingFullSourceSet =
+    accessContext.accessScope === "admin" && requestedSourceIds.length === 0;
+  const requestedSourceCount = usingFullSourceSet
+    ? availableSources.length
+    : requestedSourceIds.length;
   console.info(
-    `[output/raw] requested source ids="${sourceParam}" encoding=${useBase64Encoding ? "base64" : "plain"}`
+    `[output/raw] requested source ids="${sourceParam || "*"}" access_scope=${
+      accessContext.accessScope
+    } encoding=${useBase64Encoding ? "base64" : "plain"}`
   );
-  if (!sourceParam) {
+  if (!sourceParam && !usingFullSourceSet) {
     return textResponse('Missing required "source" query parameter.', 400);
   }
 
-  const usingPublishedSnapshot =
-    !accessContext.isAdmin && !accessContext.hasSignedAccess;
-  const availableSources = usingPublishedSnapshot
-    ? getPublishedSources(appState)
-    : appState.sources;
-  const selectedSourcesResult = usingPublishedSnapshot
+  const selectedSourcesResult = usingFullSourceSet
     ? {
         ok: true as const,
         missingIds: [] as string[],
-        sources: availableSources.filter((source) =>
-          sourceParam
-            .split(",")
-            .map((value) => value.trim())
-            .filter(Boolean)
-            .includes(source.id)
-        ),
+        sources: availableSources,
       }
-    : resolveSelectedSources(sourceParam, availableSources);
+    : usingPublishedSnapshot
+      ? {
+          ok: true as const,
+          missingIds: [] as string[],
+          sources: availableSources.filter((source) =>
+            requestedSourceIds.includes(source.id)
+          ),
+        }
+      : resolveSelectedSources(sourceParam, availableSources);
 
   if (!selectedSourcesResult.ok) {
     if (selectedSourcesResult.missingIds.length > 0) {
@@ -175,9 +194,9 @@ export async function GET(request: Request) {
       usingPublishedSnapshot ? "published" : accessContext.hasSignedAccess ? "signed" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
       appState.publishedAt ?? "none"
-    } using_published_snapshot=${usingPublishedSnapshot} resolved_sources=${
+    } access_scope=${accessContext.accessScope} using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${usingFullSourceSet} requested_source_count=${requestedSourceCount} resolved_source_count=${
       selectedSourcesResult.sources.length
-    } raw_sources=${rawSources.length}`
+    } published_source_count=${publishedSources.length} raw_sources=${rawSources.length}`
   );
   const {
     entries,
@@ -209,9 +228,9 @@ export async function GET(request: Request) {
       usingPublishedSnapshot ? "published" : accessContext.hasSignedAccess ? "signed" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
       appState.publishedAt ?? "none"
-    } using_published_snapshot=${usingPublishedSnapshot} source_count=${
+    } access_scope=${accessContext.accessScope} using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${usingFullSourceSet} requested_source_count=${requestedSourceCount} resolved_source_count=${
       selectedSourcesResult.sources.length
-    } entries=${entries.length} skipped=${skippedCount} alias_applied_count=${aliasAppliedCount} fallback_original_name_count=${fallbackOriginalNameCount} mode=${
+    } published_source_count=${publishedSources.length} entries=${entries.length} skipped=${skippedCount} alias_applied_count=${aliasAppliedCount} fallback_original_name_count=${fallbackOriginalNameCount} mode=${
       useBase64Encoding ? "base64" : "plain"
     } length=${responseBody.length} body_preview="${getLogPreview(responseBody)}"`
   );

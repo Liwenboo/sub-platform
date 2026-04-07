@@ -81,6 +81,10 @@ const copy = {
     pending: "\u5df2\u751f\u6210\u5f85\u53d1\u5e03",
     confirmed: "\u5df2\u786e\u8ba4\u53d1\u5e03",
   },
+  hints: {
+    adminFullSourceScope:
+      "\u7ba1\u7406\u5458\u8ba2\u9605\u94fe\u63a5\u9ed8\u8ba4\u8f93\u51fa\u5168\u90e8\u8282\u70b9\uff0c\u5f53\u524d\u9009\u62e9\u4ec5\u7528\u4e8e\u53d1\u5e03\u786e\u8ba4\u3002",
+  },
   publishNotice: {
     confirmed: "\u5df2\u786e\u8ba4\u53d1\u5e03\uff0c\u53ef\u7528\u4e8e\u5206\u53d1\u3002",
     invalidated:
@@ -392,6 +396,7 @@ export default function OutputsPage() {
     return buildOutputLink({
       selectedFormat,
       selectedSourceIds,
+      includeAllSources: canEditOutputParams,
       publishDomain,
       httpsEnabled,
       urlTokenEnabled,
@@ -416,6 +421,7 @@ export default function OutputsPage() {
     tfoEnabled,
     sortMode,
     normalizedOutputName,
+    canEditOutputParams,
   ]);
 
   const displayedOutputUrl = useMemo(
@@ -758,6 +764,11 @@ export default function OutputsPage() {
                 <span className="font-medium text-slate-900">{generatedAt}</span>
               </p>
             </div>
+          )}
+          {canEditOutputParams && (
+            <p className="mt-3 text-sm text-slate-600">
+              {copy.hints.adminFullSourceScope}
+            </p>
           )}
 
           {!canEditOutputParams && (
