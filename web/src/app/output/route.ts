@@ -115,8 +115,9 @@ type V2rayBypassResult = {
   responseHeaders: Headers;
   fetchedRemoteCount: number;
   remoteFetchStatuses: string[];
-  skippedRawCount: number;
-  skippedRemoteCount: number;
+  aliasAppliedCount: number;
+  fallbackOriginalNameCount: number;
+  skippedCount: number;
   errorMessage?: string;
 };
 
@@ -207,6 +208,8 @@ async function buildV2rayBypassResult(
   const remoteFetchStatuses: string[] = [];
   let fetchedRemoteCount = 0;
   let skippedRemoteCount = 0;
+  let fallbackOriginalNameCount = rawResult.fallbackOriginalNameCount;
+  const aliasAppliedCount = rawResult.aliasAppliedCount;
 
   for (const source of remoteSources) {
     const remoteUrl = getSourceDisplayValue(source);
@@ -244,6 +247,7 @@ async function buildV2rayBypassResult(
 
       fetchedRemoteCount += 1;
       skippedRemoteCount += remoteEntriesResult.skippedCount;
+      fallbackOriginalNameCount += remoteEntriesResult.entries.length;
       mergedEntries.push(...remoteEntriesResult.entries);
     } catch {
       remoteFetchStatuses.push(`${source.id}:fetch_error`);
@@ -265,8 +269,9 @@ async function buildV2rayBypassResult(
       }),
       fetchedRemoteCount,
       remoteFetchStatuses,
-      skippedRawCount: rawResult.skippedCount,
-      skippedRemoteCount,
+      aliasAppliedCount,
+      fallbackOriginalNameCount,
+      skippedCount: rawResult.skippedCount + skippedRemoteCount,
       errorMessage: "No valid raw or remote subscription entries found.",
     };
   }
@@ -290,8 +295,9 @@ async function buildV2rayBypassResult(
     responseHeaders,
     fetchedRemoteCount,
     remoteFetchStatuses,
-    skippedRawCount: rawResult.skippedCount,
-    skippedRemoteCount,
+    aliasAppliedCount,
+    fallbackOriginalNameCount,
+    skippedCount: skippedTotal,
   };
 }
 
@@ -508,7 +514,7 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
     if (!bypassResult.ok) {
       console.error(
-        `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+        `[output] response format=${outputPlan.format} target=${outputPlan.target} source_count=${outputPlan.resolvedSourceCount} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${bypassResult.aliasAppliedCount} fallback_original_name_count=${bypassResult.fallbackOriginalNameCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
           bypassResult.errorMessage ?? ""
         )}"`
       );
@@ -517,7 +523,7 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
     const responseBody = bypassResult.responseBody ?? "";
     console.info(
-      `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+      `[output] response format=${outputPlan.format} target=${outputPlan.target} source_count=${outputPlan.resolvedSourceCount} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${bypassResult.aliasAppliedCount} fallback_original_name_count=${bypassResult.fallbackOriginalNameCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
         responseBody
       )}"`
     );

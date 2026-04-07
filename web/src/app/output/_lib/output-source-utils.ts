@@ -30,6 +30,63 @@ function buildRawSourcePayload(sourceParam: string, issuedAtSeconds: number): st
   return `${sourceParam}\n${issuedAtSeconds}`;
 }
 
+function normalizeBase64Value(input: string): string {
+  const normalized = input.trim().replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const paddingLength = (4 - (normalized.length % 4 || 4)) % 4;
+  return `${normalized}${"=".repeat(paddingLength)}`;
+}
+
+function encodeNodeNameFragment(value: string): string {
+  return encodeURIComponent(value).replace(/%20/g, "+");
+}
+
+function renameUriStyleRawNode(line: string, alias: string): string {
+  const hashIndex = line.indexOf("#");
+  const base = hashIndex >= 0 ? line.slice(0, hashIndex) : line;
+  return `${base}#${encodeNodeNameFragment(alias)}`;
+}
+
+function renameVmessRawNode(line: string, alias: string): string {
+  const encodedPayload = line.slice("vmess://".length);
+  if (!encodedPayload.trim()) {
+    return line;
+  }
+
+  try {
+    const decodedPayload = Buffer.from(
+      normalizeBase64Value(encodedPayload),
+      "base64"
+    ).toString("utf8");
+    const parsedPayload = JSON.parse(decodedPayload) as Record<string, unknown>;
+    parsedPayload.ps = alias;
+    const reencodedPayload = Buffer.from(
+      JSON.stringify(parsedPayload),
+      "utf8"
+    ).toString("base64");
+
+    return `vmess://${reencodedPayload}`;
+  } catch {
+    return line;
+  }
+}
+
+function applyAliasToRawNode(line: string, alias: string | null): string {
+  if (!alias) {
+    return line;
+  }
+
+  const parsed = parseSourceInput(line);
+  if (!parsed || parsed.sourceType !== "raw") {
+    return line;
+  }
+
+  if (parsed.sourceProtocol === "vmess") {
+    return renameVmessRawNode(line, alias);
+  }
+
+  return renameUriStyleRawNode(line, alias);
+}
+
 export function getRequestOrigin(request: Request): string {
   const configuredOrigin =
     readEnvValue([
@@ -171,9 +228,12 @@ export function resolveSelectedSources(sourceParam: string, sources: SourceItem[
 export function collectValidRawSourceEntries(sources: SourceItem[]) {
   const entries: string[] = [];
   let skippedCount = 0;
+  let aliasAppliedCount = 0;
+  let fallbackOriginalNameCount = 0;
 
   for (const source of sources) {
     const rawValue = getSourceDisplayValue(source);
+    const alias = source.name.trim() || null;
     const lines = rawValue
       .split(/\r?\n/g)
       .map((line) => line.trim())
@@ -189,12 +249,21 @@ export function collectValidRawSourceEntries(sources: SourceItem[]) {
         continue;
       }
 
-      entries.push(line);
+      const aliasedLine = applyAliasToRawNode(line, alias);
+      if (aliasedLine !== line) {
+        aliasAppliedCount += 1;
+      } else {
+        fallbackOriginalNameCount += 1;
+      }
+
+      entries.push(aliasedLine);
     }
   }
 
   return {
     entries: Array.from(new Set(entries)),
     skippedCount,
+    aliasAppliedCount,
+    fallbackOriginalNameCount,
   };
 }

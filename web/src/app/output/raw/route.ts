@@ -107,7 +107,12 @@ export async function GET(request: Request) {
   console.info(
     `[output/raw] resolved_sources=${selectedSourcesResult.sources.length} raw_sources=${rawSources.length}`
   );
-  const { entries, skippedCount } = collectValidRawSourceEntries(rawSources);
+  const {
+    entries,
+    skippedCount,
+    aliasAppliedCount,
+    fallbackOriginalNameCount,
+  } = collectValidRawSourceEntries(rawSources);
 
   if (entries.length === 0) {
     console.error(`[output/raw] no valid raw node entries found for source ids="${sourceParam}"`);
@@ -128,7 +133,7 @@ export async function GET(request: Request) {
     ? `${encodeBase64Subscription(plainTextBody)}\n`
     : plainTextBody;
   console.info(
-    `[output/raw] returning entries=${entries.length} skipped=${skippedCount} mode=${
+    `[output/raw] returning source_count=${selectedSourcesResult.sources.length} entries=${entries.length} skipped=${skippedCount} alias_applied_count=${aliasAppliedCount} fallback_original_name_count=${fallbackOriginalNameCount} mode=${
       useBase64Encoding ? "base64" : "plain"
     } length=${responseBody.length} body_preview="${getLogPreview(responseBody)}"`
   );
