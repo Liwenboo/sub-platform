@@ -6,6 +6,7 @@ import {
 import type { SourceItem } from "../../_types/app-types";
 
 const RAW_SOURCE_SIGNATURE_TTL_SECONDS = 60 * 5;
+const ADMIN_SUBSCRIPTION_ACCESS_SCOPE = "admin_full";
 
 function readEnvValue(keys: string[]): string | null {
   for (const key of keys) {
@@ -28,6 +29,10 @@ function signRawSourcePayload(payload: string, secret: string): string {
 
 function buildRawSourcePayload(sourceParam: string, issuedAtSeconds: number): string {
   return `${sourceParam}\n${issuedAtSeconds}`;
+}
+
+function buildAdminSubscriptionPayload(): string {
+  return `subscription_access\n${ADMIN_SUBSCRIPTION_ACCESS_SCOPE}`;
 }
 
 function normalizeBase64Value(input: string): string {
@@ -185,6 +190,35 @@ export function isRawSourceAccessSignatureValid(
   }
 
   return timingSafeEqual(expectedSignatureBuffer, providedSignatureBuffer);
+}
+
+export function createAdminSubscriptionToken(): string | null {
+  const secret = getRawSourceSignatureSecret();
+  if (!secret) {
+    return null;
+  }
+
+  return signRawSourcePayload(buildAdminSubscriptionPayload(), secret);
+}
+
+export function isAdminSubscriptionTokenValid(providedToken: string | null): boolean {
+  if (!providedToken) {
+    return false;
+  }
+
+  const expectedToken = createAdminSubscriptionToken();
+  if (!expectedToken) {
+    return false;
+  }
+
+  const expectedTokenBuffer = Buffer.from(expectedToken);
+  const providedTokenBuffer = Buffer.from(providedToken);
+
+  if (expectedTokenBuffer.length !== providedTokenBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedTokenBuffer, providedTokenBuffer);
 }
 
 export function resolveSelectedSources(sourceParam: string, sources: SourceItem[]) {

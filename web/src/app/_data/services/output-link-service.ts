@@ -4,6 +4,7 @@ export type OutputLinkBuildParams = {
   selectedFormat: OutputFormatId;
   selectedSourceIds: string[];
   includeAllSources?: boolean;
+  adminAccessToken?: string | null;
   publishDomain: string;
   httpsEnabled: boolean;
   urlTokenEnabled: boolean;
@@ -54,6 +55,10 @@ export function buildOutputLink(params: OutputLinkBuildParams): string {
       "source",
       params.selectedSourceIds.length > 0 ? params.selectedSourceIds.join(",") : "none"
     );
+  }
+
+  if (params.adminAccessToken) {
+    query.set("admin_token", params.adminAccessToken);
   }
 
   if (typeof params.generationVersion === "number") {

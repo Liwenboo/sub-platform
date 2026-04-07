@@ -1,7 +1,15 @@
 import { getSourceDisplayValue } from "../_data/services/source-entry-service";
 import type { SourceItem, UserRole } from "../_types/app-types";
 
-const SENSITIVE_QUERY_KEYS = ["token", "key", "secret", "auth", "signature", "sig"];
+const SENSITIVE_QUERY_KEYS = [
+  "token",
+  "admin_token",
+  "key",
+  "secret",
+  "auth",
+  "signature",
+  "sig",
+];
 
 export function isAdminRole(role: UserRole): boolean {
   return role === "admin";
@@ -115,7 +123,7 @@ export function maskSensitiveParamsInUrl(url: string, role: UserRole): string {
     return parsed.toString();
   } catch {
     return url.replace(
-      /([?&](?:token|key|secret|auth|signature|sig)=)[^&]*/gi,
+      /([?&](?:token|admin_token|key|secret|auth|signature|sig)=)[^&]*/gi,
       "$1***"
     );
   }

@@ -12,8 +12,10 @@ import type { OutputFormatId, SourceItem } from "../_types/app-types";
 import { getPublishedSources } from "../_data/services/app-data-service";
 import {
   collectValidRawSourceEntries,
+  createAdminSubscriptionToken,
   createRawSourceAccessSignature,
   getRequestOrigin,
+  isAdminSubscriptionTokenValid,
   resolveSelectedSources,
 } from "./_lib/output-source-utils";
 import { readStoredAppDataState } from "../../server/mock-data/app-data-storage";
@@ -37,7 +39,7 @@ const FORWARDED_QUERY_KEYS = new Set([
 
 function maskSensitiveValueForLog(input: string): string {
   return input.replace(
-    /([?&](?:token|sig)=)[^&\s"]*/gi,
+    /([?&](?:token|admin_token|sig)=)[^&\s"]*/gi,
     "$1***"
   );
 }
@@ -110,7 +112,9 @@ type OutputAccessContext =
   | {
       ok: true;
       isAdmin: boolean;
-      accessScope: "admin" | "viewer" | "public";
+      accessScope: "admin_full" | "viewer" | "public";
+      tokenType: "session_admin" | "admin_token" | "viewer_token" | "viewer_session" | "none";
+      signatureType: "none";
     };
 
 type V2rayBypassResult = {
@@ -446,6 +450,16 @@ function buildOutputRequestPlan(
       rawSourceUrl.searchParams.set("token", token);
     }
 
+    const adminToken = requestUrl.searchParams.get("admin_token")?.trim();
+    if (adminToken) {
+      rawSourceUrl.searchParams.set("admin_token", adminToken);
+    } else if (!usingPublishedSnapshot) {
+      const generatedAdminToken = createAdminSubscriptionToken();
+      if (generatedAdminToken) {
+        rawSourceUrl.searchParams.set("admin_token", generatedAdminToken);
+      }
+    }
+
     const issuedAtSeconds = Math.floor(Date.now() / 1000);
     const signature = createRawSourceAccessSignature(
       rawSourceParam,
@@ -509,6 +523,7 @@ async function canAccessOutput(
   urlTokenEnabled: boolean
 ): Promise<OutputAccessContext> {
   const token = requestUrl.searchParams.get("token")?.trim();
+  const adminToken = requestUrl.searchParams.get("admin_token")?.trim() ?? null;
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
   const session = getSessionFromToken(sessionToken);
@@ -517,7 +532,19 @@ async function canAccessOutput(
     return {
       ok: true,
       isAdmin: true,
-      accessScope: "admin",
+      accessScope: "admin_full",
+      tokenType: "session_admin",
+      signatureType: "none",
+    };
+  }
+
+  if (isAdminSubscriptionTokenValid(adminToken)) {
+    return {
+      ok: true,
+      isAdmin: true,
+      accessScope: "admin_full",
+      tokenType: "admin_token",
+      signatureType: "none",
     };
   }
 
@@ -526,6 +553,8 @@ async function canAccessOutput(
       ok: true,
       isAdmin: false,
       accessScope: "public",
+      tokenType: "none",
+      signatureType: "none",
     };
   }
 
@@ -534,6 +563,8 @@ async function canAccessOutput(
       ok: true,
       isAdmin: false,
       accessScope: "viewer",
+      tokenType: "viewer_session",
+      signatureType: "none",
     };
   }
 
@@ -542,6 +573,8 @@ async function canAccessOutput(
       ok: true,
       isAdmin: false,
       accessScope: "public",
+      tokenType: "viewer_token",
+      signatureType: "none",
     };
   }
 
@@ -572,7 +605,7 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
     appState.apiPath,
     effectiveSources,
     usingPublishedSnapshot,
-    accessContext.accessScope === "admin"
+    accessContext.accessScope === "admin_full"
   );
   if (!outputPlan.ok) {
     return outputPlan.response;
@@ -585,6 +618,8 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   console.info(
     `[output] request format=${outputPlan.format} target=${outputPlan.target} access_scope=${
       accessContext.accessScope
+    } token_type=${accessContext.tokenType} signature_type=${
+      accessContext.signatureType
     } publish_state=${
       usingPublishedSnapshot ? "published" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
@@ -616,6 +651,8 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
       console.error(
         `[output] response format=${outputPlan.format} target=${outputPlan.target} access_scope=${
           accessContext.accessScope
+        } token_type=${accessContext.tokenType} signature_type=${
+          accessContext.signatureType
         } publish_state=${
           usingPublishedSnapshot ? "published" : "draft"
         } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
@@ -643,6 +680,8 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
     console.info(
       `[output] response format=${outputPlan.format} target=${outputPlan.target} access_scope=${
         accessContext.accessScope
+      } token_type=${accessContext.tokenType} signature_type=${
+        accessContext.signatureType
       } publish_state=${
         usingPublishedSnapshot ? "published" : "draft"
       } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
@@ -720,6 +759,8 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   console.info(
     `[output] response format=${outputPlan.format} target=${outputPlan.target} access_scope=${
       accessContext.accessScope
+    } token_type=${accessContext.tokenType} signature_type=${
+      accessContext.signatureType
     } publish_state=${
       usingPublishedSnapshot ? "published" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${

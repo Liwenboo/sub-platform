@@ -35,6 +35,15 @@ import {
 } from "../_utils/access-control";
 import { getSourceStatusLabel } from "../_utils/source-status";
 
+type AuthSessionPayload = {
+  success?: boolean;
+  data?: {
+    authenticated?: boolean;
+    role?: "admin" | "viewer";
+    adminSubscriptionToken?: string | null;
+  } | null;
+};
+
 const copy = {
   title: "\u8f93\u51fa\u7ba1\u7406",
   subtitle:
@@ -84,6 +93,8 @@ const copy = {
   hints: {
     adminFullSourceScope:
       "\u7ba1\u7406\u5458\u8ba2\u9605\u94fe\u63a5\u9ed8\u8ba4\u8f93\u51fa\u5168\u90e8\u8282\u70b9\uff0c\u5f53\u524d\u9009\u62e9\u4ec5\u7528\u4e8e\u53d1\u5e03\u786e\u8ba4\u3002",
+    adminTokenPreparing:
+      "\u6b63\u5728\u751f\u6210\u7ba1\u7406\u5458\u4e13\u7528\u8ba2\u9605\u51ed\u8bc1\uff0c\u8bf7\u7a0d\u540e\u518d\u590d\u5236\u94fe\u63a5\u3002",
   },
   publishNotice: {
     confirmed: "\u5df2\u786e\u8ba4\u53d1\u5e03\uff0c\u53ef\u7528\u4e8e\u5206\u53d1\u3002",
@@ -243,6 +254,10 @@ export default function OutputsPage() {
   );
   const [outputName, setOutputName] = useState<string>("");
   const [copyState, setCopyState] = useState<OutputCopyState>("idle");
+  const [adminSubscriptionToken, setAdminSubscriptionToken] = useState<string | null>(
+    null
+  );
+  const [adminSubscriptionReady, setAdminSubscriptionReady] = useState(false);
   const [publishStatus, setPublishStatus] = useState<OutputPublishStatus>(
     OUTPUT_DEFAULT_PUBLISH_STATUS
   );
@@ -253,6 +268,54 @@ export default function OutputsPage() {
   useEffect(() => {
     setSelectedFormat(defaultOutputFormat);
   }, [defaultOutputFormat]);
+
+  useEffect(() => {
+    if (!canEditOutputParams) {
+      setAdminSubscriptionToken(null);
+      setAdminSubscriptionReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAdminSubscriptionToken = async () => {
+      setAdminSubscriptionReady(false);
+
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+        const payload = (await response.json()) as AuthSessionPayload;
+        const nextToken =
+          response.ok &&
+          payload.success &&
+          payload.data?.authenticated &&
+          payload.data.role === "admin"
+            ? payload.data.adminSubscriptionToken?.trim() ?? ""
+            : "";
+
+        if (!cancelled) {
+          setAdminSubscriptionToken(nextToken || null);
+        }
+      } catch {
+        if (!cancelled) {
+          setAdminSubscriptionToken(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setAdminSubscriptionReady(true);
+        }
+      }
+    };
+
+    void loadAdminSubscriptionToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditOutputParams]);
 
   const effectivePublishedSourceIds = useMemo(() => {
     const validPublishedSourceIds = publishedSourceIds.filter((id) =>
@@ -393,10 +456,15 @@ export default function OutputsPage() {
     "\u5df2\u4e3a\u5f53\u524d\u9009\u9879\u751f\u6210\u8ba2\u9605\u94fe\u63a5\uff0c\u53ef\u76f4\u63a5\u590d\u5236\u5230\u5ba2\u6237\u7aef\u3002";
 
   const outputUrl = useMemo(() => {
+    if (canEditOutputParams && !adminSubscriptionToken) {
+      return "";
+    }
+
     return buildOutputLink({
       selectedFormat,
       selectedSourceIds,
       includeAllSources: canEditOutputParams,
+      adminAccessToken: canEditOutputParams ? adminSubscriptionToken : null,
       publishDomain,
       httpsEnabled,
       urlTokenEnabled,
@@ -421,6 +489,7 @@ export default function OutputsPage() {
     tfoEnabled,
     sortMode,
     normalizedOutputName,
+    adminSubscriptionToken,
     canEditOutputParams,
   ]);
 
@@ -428,6 +497,7 @@ export default function OutputsPage() {
     () => maskSensitiveParamsInUrl(outputUrl, role),
     [outputUrl, role]
   );
+  const canCopyOutputLink = outputUrl.length > 0;
 
   const toggleSourceSelection = (sourceId: string) => {
     setSelectedOutputSourceIdsDraft(
@@ -438,6 +508,10 @@ export default function OutputsPage() {
   };
 
   const handleCopyLink = async () => {
+    if (!outputUrl) {
+      return;
+    }
+
     const copied = await copyToClipboard(outputUrl);
     setCopyState(copied ? "success" : "error");
 
@@ -767,7 +841,9 @@ export default function OutputsPage() {
           )}
           {canEditOutputParams && (
             <p className="mt-3 text-sm text-slate-600">
-              {copy.hints.adminFullSourceScope}
+              {adminSubscriptionReady && adminSubscriptionToken
+                ? copy.hints.adminFullSourceScope
+                : copy.hints.adminTokenPreparing}
             </p>
           )}
 
@@ -786,7 +862,7 @@ export default function OutputsPage() {
               {copy.labels.httpsUrl}
             </p>
             <p className="mt-2 break-all text-sm font-medium text-slate-900">
-              {displayedOutputUrl}
+              {displayedOutputUrl || "\u6b63\u5728\u751f\u6210\u7ba1\u7406\u5458\u4e13\u7528\u8ba2\u9605\u94fe\u63a5..."}
             </p>
           </div>
 
@@ -794,7 +870,8 @@ export default function OutputsPage() {
             <button
               type="button"
               onClick={handleCopyLink}
-              className={`inline-flex items-center justify-center rounded-lg bg-slate-900 font-medium text-white transition-colors hover:bg-slate-700 ${
+              disabled={!canCopyOutputLink}
+              className={`inline-flex items-center justify-center rounded-lg bg-slate-900 font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 ${
                 canEditOutputParams ? "h-10 px-4 text-sm" : "h-11 px-6 text-base"
               }`}
             >

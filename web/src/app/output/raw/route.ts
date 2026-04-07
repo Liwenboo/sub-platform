@@ -8,6 +8,7 @@ import { readStoredAppDataState } from "../../../server/mock-data/app-data-stora
 import { getPublishedSources } from "../../_data/services/app-data-service";
 import {
   collectValidRawSourceEntries,
+  isAdminSubscriptionTokenValid,
   isRawSourceAccessSignatureValid,
   resolveSelectedSources,
 } from "../_lib/output-source-utils";
@@ -36,7 +37,9 @@ type RawSourceAccessContext =
       ok: true;
       isAdmin: boolean;
       hasSignedAccess: boolean;
-      accessScope: "admin" | "viewer" | "public";
+      accessScope: "admin_full" | "viewer" | "public";
+      tokenType: "session_admin" | "admin_token" | "viewer_token" | "viewer_session" | "none";
+      signatureType: "raw_source_sig" | "none";
     };
 
 function textResponse(message: string, status: number, headers?: HeadersInit): Response {
@@ -55,6 +58,7 @@ async function canAccessRawSource(
   urlTokenEnabled: boolean
 ): Promise<RawSourceAccessContext> {
   const token = requestUrl.searchParams.get("token")?.trim();
+  const adminToken = requestUrl.searchParams.get("admin_token")?.trim() ?? null;
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
   const signature = requestUrl.searchParams.get("sig")?.trim() ?? null;
   const issuedAtSeconds = Number(requestUrl.searchParams.get("ts"));
@@ -67,7 +71,20 @@ async function canAccessRawSource(
       ok: true,
       isAdmin: true,
       hasSignedAccess: false,
-      accessScope: "admin",
+      accessScope: "admin_full",
+      tokenType: "session_admin",
+      signatureType: "none",
+    };
+  }
+
+  if (isAdminSubscriptionTokenValid(adminToken)) {
+    return {
+      ok: true,
+      isAdmin: true,
+      hasSignedAccess: false,
+      accessScope: "admin_full",
+      tokenType: "admin_token",
+      signatureType: "none",
     };
   }
 
@@ -77,6 +94,8 @@ async function canAccessRawSource(
       isAdmin: false,
       hasSignedAccess: false,
       accessScope: "public",
+      tokenType: "none",
+      signatureType: "none",
     };
   }
 
@@ -86,6 +105,8 @@ async function canAccessRawSource(
       isAdmin: false,
       hasSignedAccess: false,
       accessScope: "viewer",
+      tokenType: "viewer_session",
+      signatureType: "none",
     };
   }
 
@@ -95,6 +116,8 @@ async function canAccessRawSource(
       isAdmin: false,
       hasSignedAccess: false,
       accessScope: "public",
+      tokenType: "viewer_token",
+      signatureType: "none",
     };
   }
 
@@ -107,6 +130,8 @@ async function canAccessRawSource(
       isAdmin: false,
       hasSignedAccess: true,
       accessScope: "public",
+      tokenType: "none",
+      signatureType: "raw_source_sig",
     };
   }
 
@@ -137,13 +162,15 @@ export async function GET(request: Request) {
   const publishedSources = getPublishedSources(appState);
   const availableSources = usingPublishedSnapshot ? publishedSources : appState.sources;
   const usingFullSourceSet =
-    accessContext.accessScope === "admin" && requestedSourceIds.length === 0;
+    accessContext.accessScope === "admin_full" && requestedSourceIds.length === 0;
   const requestedSourceCount = usingFullSourceSet
     ? availableSources.length
     : requestedSourceIds.length;
   console.info(
     `[output/raw] requested source ids="${sourceParam || "*"}" access_scope=${
       accessContext.accessScope
+    } token_type=${accessContext.tokenType} signature_type=${
+      accessContext.signatureType
     } encoding=${useBase64Encoding ? "base64" : "plain"}`
   );
   if (!sourceParam && !usingFullSourceSet) {
@@ -194,7 +221,7 @@ export async function GET(request: Request) {
       usingPublishedSnapshot ? "published" : accessContext.hasSignedAccess ? "signed" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
       appState.publishedAt ?? "none"
-    } access_scope=${accessContext.accessScope} using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${usingFullSourceSet} requested_source_count=${requestedSourceCount} resolved_source_count=${
+    } access_scope=${accessContext.accessScope} token_type=${accessContext.tokenType} signature_type=${accessContext.signatureType} using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${usingFullSourceSet} requested_source_count=${requestedSourceCount} resolved_source_count=${
       selectedSourcesResult.sources.length
     } published_source_count=${publishedSources.length} raw_sources=${rawSources.length}`
   );
@@ -228,7 +255,7 @@ export async function GET(request: Request) {
       usingPublishedSnapshot ? "published" : accessContext.hasSignedAccess ? "signed" : "draft"
     } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
       appState.publishedAt ?? "none"
-    } access_scope=${accessContext.accessScope} using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${usingFullSourceSet} requested_source_count=${requestedSourceCount} resolved_source_count=${
+    } access_scope=${accessContext.accessScope} token_type=${accessContext.tokenType} signature_type=${accessContext.signatureType} using_published_snapshot=${usingPublishedSnapshot} using_full_source_set=${usingFullSourceSet} requested_source_count=${requestedSourceCount} resolved_source_count=${
       selectedSourcesResult.sources.length
     } published_source_count=${publishedSources.length} entries=${entries.length} skipped=${skippedCount} alias_applied_count=${aliasAppliedCount} fallback_original_name_count=${fallbackOriginalNameCount} mode=${
       useBase64Encoding ? "base64" : "plain"
