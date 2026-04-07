@@ -27,6 +27,7 @@ const copy = {
     service: "subconverter \u670d\u52a1\u914d\u7f6e",
     defaults: "\u9ed8\u8ba4\u8f93\u51fa\u914d\u7f6e",
     publish: "\u53d1\u5e03\u57df\u540d\u914d\u7f6e",
+    notice: "\u7528\u6237\u63d0\u793a",
   },
   fields: {
     serviceUrl: "\u670d\u52a1\u5730\u5740",
@@ -37,6 +38,9 @@ const copy = {
     urlToken: "URL Token \u5f00\u5173",
     publishDomain: "\u5bf9\u5916\u53d1\u5e03\u57df\u540d",
     httpsStatus: "HTTPS \u72b6\u6001",
+    userNoticeEnabled: "\u542f\u7528 viewer \u63d0\u793a",
+    userNoticeTitle: "\u63d0\u793a\u6807\u9898",
+    userNoticeMessage: "\u63d0\u793a\u5185\u5bb9",
   },
   actions: {
     testConnection: "\u68c0\u6d4b\u8fde\u63a5",
@@ -91,6 +95,10 @@ export default function SettingsPage() {
     serviceCheckStatus,
     publishDomain,
     httpsEnabled,
+    userNoticeEnabled,
+    userNoticeTitle,
+    userNoticeMessage,
+    userNoticeUpdatedAt,
     refreshAppData,
     saveSettingsPatch,
     setDefaultSourceId,
@@ -114,6 +122,12 @@ export default function SettingsPage() {
   const [draftApiPath, setDraftApiPath] = useState(apiPath);
   const [draftPublishDomain, setDraftPublishDomain] = useState(publishDomain);
   const [draftHttpsEnabled, setDraftHttpsEnabled] = useState(httpsEnabled);
+  const [draftUserNoticeEnabled, setDraftUserNoticeEnabled] =
+    useState(userNoticeEnabled);
+  const [draftUserNoticeTitle, setDraftUserNoticeTitle] =
+    useState(userNoticeTitle);
+  const [draftUserNoticeMessage, setDraftUserNoticeMessage] =
+    useState(userNoticeMessage);
   const [saveSubmitting, setSaveSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetAllSubmitting, setResetAllSubmitting] = useState(false);
@@ -166,6 +180,18 @@ export default function SettingsPage() {
   useEffect(() => {
     setDraftHttpsEnabled(httpsEnabled);
   }, [httpsEnabled]);
+
+  useEffect(() => {
+    setDraftUserNoticeEnabled(userNoticeEnabled);
+  }, [userNoticeEnabled]);
+
+  useEffect(() => {
+    setDraftUserNoticeTitle(userNoticeTitle);
+  }, [userNoticeTitle]);
+
+  useEffect(() => {
+    setDraftUserNoticeMessage(userNoticeMessage);
+  }, [userNoticeMessage]);
 
   const hasPendingAction =
     saveSubmitting || resetSubmitting || resetAllSubmitting || testingConnection;
@@ -238,6 +264,12 @@ export default function SettingsPage() {
     setSaveSubmitting(true);
 
     try {
+      const normalizedDraftUserNoticeTitle = draftUserNoticeTitle.trim();
+      const normalizedDraftUserNoticeMessage = draftUserNoticeMessage.trim();
+      const userNoticeChanged =
+        draftUserNoticeEnabled !== userNoticeEnabled ||
+        normalizedDraftUserNoticeTitle !== userNoticeTitle ||
+        normalizedDraftUserNoticeMessage !== userNoticeMessage;
       const outputConfigResult = await setDefaultSourceId(draftDefaultSourceId);
       if (!outputConfigResult.ok) {
         setErrorMessage(
@@ -263,6 +295,12 @@ export default function SettingsPage() {
         apiPath: draftApiPath,
         publishDomain: draftPublishDomain,
         httpsEnabled: draftHttpsEnabled,
+        userNoticeEnabled: draftUserNoticeEnabled,
+        userNoticeTitle: normalizedDraftUserNoticeTitle,
+        userNoticeMessage: normalizedDraftUserNoticeMessage,
+        ...(userNoticeChanged
+          ? { userNoticeUpdatedAt: formatDateTime(new Date()) }
+          : { userNoticeUpdatedAt }),
       });
 
       if (!settingsResult.ok) {
@@ -542,6 +580,57 @@ export default function SettingsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">
+            {copy.sections.notice}
+          </h2>
+          <div className="mt-4 space-y-4">
+            <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <span className="text-sm font-medium text-slate-700">
+                {copy.fields.userNoticeEnabled}
+              </span>
+              <button
+                type="button"
+                aria-pressed={draftUserNoticeEnabled}
+                onClick={() => setDraftUserNoticeEnabled(!draftUserNoticeEnabled)}
+                className={`inline-flex h-6 w-11 items-center rounded-full p-1 transition-colors ${
+                  draftUserNoticeEnabled ? "bg-amber-500" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`h-4 w-4 rounded-full bg-white transition-transform ${
+                    draftUserNoticeEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-700">
+                {copy.fields.userNoticeTitle}
+              </span>
+              <input
+                type="text"
+                value={draftUserNoticeTitle}
+                onChange={(event) => setDraftUserNoticeTitle(event.target.value)}
+                placeholder="默认使用提醒"
+                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-700">
+                {copy.fields.userNoticeMessage}
+              </span>
+              <textarea
+                value={draftUserNoticeMessage}
+                onChange={(event) => setDraftUserNoticeMessage(event.target.value)}
+                rows={4}
+                placeholder="例如：请勿在公共设备保存订阅链接，如节点异常请先更新订阅。"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 text-slate-900 outline-none ring-slate-200 transition focus:ring-2"
+              />
+            </label>
           </div>
         </section>
 

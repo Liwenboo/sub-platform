@@ -43,6 +43,10 @@ export type AppDataAction =
   | { type: "set_service_last_checked_at"; checkedAt: string | null }
   | { type: "set_publish_domain"; publishDomain: string }
   | { type: "set_https_enabled"; httpsEnabled: boolean }
+  | { type: "set_user_notice_enabled"; enabled: boolean }
+  | { type: "set_user_notice_title"; title: string }
+  | { type: "set_user_notice_message"; message: string }
+  | { type: "set_user_notice_updated_at"; updatedAt: string | null }
   | { type: "reset_settings_defaults" }
   | { type: "reset_local_data" };
 
@@ -460,6 +464,17 @@ export function normalizeAppDataState(state: AppDataState): AppDataState {
       defaultState.publishDomain
     ),
     httpsEnabled: normalizeBoolean(state.httpsEnabled) ?? defaultState.httpsEnabled,
+    userNoticeEnabled:
+      normalizeBoolean(state.userNoticeEnabled) ?? defaultState.userNoticeEnabled,
+    userNoticeTitle:
+      typeof state.userNoticeTitle === "string"
+        ? state.userNoticeTitle.trim()
+        : defaultState.userNoticeTitle,
+    userNoticeMessage:
+      typeof state.userNoticeMessage === "string"
+        ? state.userNoticeMessage.trim()
+        : defaultState.userNoticeMessage,
+    userNoticeUpdatedAt: normalizeOptionalCheckedAt(state.userNoticeUpdatedAt),
   };
 }
 
@@ -606,6 +621,41 @@ export function hydrateAppDataState(
     nextState.httpsEnabled = httpsEnabled;
   }
 
+  const userNoticeEnabled = normalizeBoolean(
+    pickFromRecords(["userNoticeEnabled", "noticeEnabled"], [
+      root,
+      settings,
+      publish,
+    ])
+  );
+  if (userNoticeEnabled !== null) {
+    nextState.userNoticeEnabled = userNoticeEnabled;
+  }
+
+  const userNoticeTitle = pickFromRecords(
+    ["userNoticeTitle", "noticeTitle"],
+    [root, settings, publish]
+  );
+  if (typeof userNoticeTitle === "string") {
+    nextState.userNoticeTitle = userNoticeTitle;
+  }
+
+  const userNoticeMessage = pickFromRecords(
+    ["userNoticeMessage", "noticeMessage"],
+    [root, settings, publish]
+  );
+  if (typeof userNoticeMessage === "string") {
+    nextState.userNoticeMessage = userNoticeMessage;
+  }
+
+  const userNoticeUpdatedAt = pickFromRecords(
+    ["userNoticeUpdatedAt", "noticeUpdatedAt", "userNoticeVersion", "noticeVersion"],
+    [root, settings, publish]
+  );
+  if (typeof userNoticeUpdatedAt === "string" || userNoticeUpdatedAt === null) {
+    nextState.userNoticeUpdatedAt = userNoticeUpdatedAt;
+  }
+
   return normalizeAppDataState(nextState);
 }
 
@@ -630,6 +680,10 @@ export function buildPersistedSnapshot(
     serviceLastCheckedAt: normalizedState.serviceLastCheckedAt,
     publishDomain: normalizedState.publishDomain,
     httpsEnabled: normalizedState.httpsEnabled,
+    userNoticeEnabled: normalizedState.userNoticeEnabled,
+    userNoticeTitle: normalizedState.userNoticeTitle,
+    userNoticeMessage: normalizedState.userNoticeMessage,
+    userNoticeUpdatedAt: normalizedState.userNoticeUpdatedAt,
   };
 }
 
@@ -737,6 +791,22 @@ export function appDataReducer(
 
   if (action.type === "set_https_enabled") {
     return normalizeAppDataState({ ...state, httpsEnabled: action.httpsEnabled });
+  }
+
+  if (action.type === "set_user_notice_enabled") {
+    return normalizeAppDataState({ ...state, userNoticeEnabled: action.enabled });
+  }
+
+  if (action.type === "set_user_notice_title") {
+    return normalizeAppDataState({ ...state, userNoticeTitle: action.title });
+  }
+
+  if (action.type === "set_user_notice_message") {
+    return normalizeAppDataState({ ...state, userNoticeMessage: action.message });
+  }
+
+  if (action.type === "set_user_notice_updated_at") {
+    return normalizeAppDataState({ ...state, userNoticeUpdatedAt: action.updatedAt });
   }
 
   if (action.type === "reset_settings_defaults") {

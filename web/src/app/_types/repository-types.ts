@@ -24,6 +24,10 @@ export type SystemSettingsState = {
   serviceLastCheckedAt: string | null;
   publishDomain: string;
   httpsEnabled: boolean;
+  userNoticeEnabled: boolean;
+  userNoticeTitle: string;
+  userNoticeMessage: string;
+  userNoticeUpdatedAt: string | null;
 };
 
 export type SystemSettingsPatch = Partial<SystemSettingsState>;

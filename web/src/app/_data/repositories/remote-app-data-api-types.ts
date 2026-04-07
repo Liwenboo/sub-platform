@@ -37,6 +37,10 @@ export type RemoteSettingsDto = {
   serviceLastCheckedAt: string | null;
   publishDomain: string;
   httpsEnabled: boolean;
+  userNoticeEnabled: boolean;
+  userNoticeTitle: string;
+  userNoticeMessage: string;
+  userNoticeUpdatedAt: string | null;
 };
 
 export type RemoteRoleDto = {

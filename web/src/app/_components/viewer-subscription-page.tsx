@@ -16,6 +16,8 @@ type ViewerSubscriptionPageProps = {
 };
 
 type CopyState = "idle" | "success" | "error";
+const VIEWER_NOTICE_DISMISSED_STORAGE_KEY =
+  "sub-platform.viewer.notice.dismissed";
 
 type FormatOption = {
   id: OutputFormatId;
@@ -100,6 +102,10 @@ export function ViewerSubscriptionPage({
     httpsEnabled,
     urlTokenEnabled,
     publishDomain,
+    userNoticeEnabled,
+    userNoticeTitle,
+    userNoticeMessage,
+    userNoticeUpdatedAt,
   } = useAppData();
   const publishedSources = useMemo(() => {
     const sourceIds = new Set(
@@ -129,6 +135,13 @@ export function ViewerSubscriptionPage({
   const [selectedFormat, setSelectedFormat] =
     useState<OutputFormatId>(defaultOutputFormat);
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [dismissedNoticeKey, setDismissedNoticeKey] = useState<string | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    return window.sessionStorage.getItem(VIEWER_NOTICE_DISMISSED_STORAGE_KEY);
+  });
 
   useEffect(() => {
     setSelectedFormat(defaultOutputFormat);
@@ -158,6 +171,32 @@ export function ViewerSubscriptionPage({
       } published_at=${publishedAt ?? "none"} using_published_snapshot=${hasPublishedSnapshot}`
     );
   }, [hasPublishedSnapshot, publishedAt, publishedSources.length, publishedVersionId]);
+
+  const normalizedUserNoticeTitle = userNoticeTitle.trim() || "使用提醒";
+  const normalizedUserNoticeMessage = userNoticeMessage.trim();
+  const userNoticeKey = useMemo(
+    () =>
+      JSON.stringify({
+        title: normalizedUserNoticeTitle,
+        message: normalizedUserNoticeMessage,
+        updatedAt: userNoticeUpdatedAt ?? "",
+      }),
+    [normalizedUserNoticeMessage, normalizedUserNoticeTitle, userNoticeUpdatedAt]
+  );
+  const showUserNotice =
+    userNoticeEnabled &&
+    normalizedUserNoticeMessage.length > 0 &&
+    dismissedNoticeKey !== userNoticeKey;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setDismissedNoticeKey(
+      window.sessionStorage.getItem(VIEWER_NOTICE_DISMISSED_STORAGE_KEY)
+    );
+  }, [userNoticeKey]);
 
   const outputUrl = useMemo(() => {
     return buildOutputLink({
@@ -198,6 +237,18 @@ export function ViewerSubscriptionPage({
     }, 1800);
   };
 
+  const handleDismissUserNotice = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      VIEWER_NOTICE_DISMISSED_STORAGE_KEY,
+      userNoticeKey
+    );
+    setDismissedNoticeKey(userNoticeKey);
+  };
+
   const sectionCardClassName =
     "rounded-2xl border border-slate-200 bg-white p-7 shadow-sm md:p-8";
   const sectionTitleClassName = "text-lg font-semibold text-slate-900";
@@ -206,6 +257,30 @@ export function ViewerSubscriptionPage({
     <div className="min-h-screen bg-slate-100 text-slate-900">
       <main className="mx-auto w-full max-w-5xl px-6 py-12 md:py-16">
         <ViewerPageHero title={title} subtitle={subtitle} />
+        {showUserNotice && (
+          <section className="mt-6 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-5 shadow-sm md:p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                <span className="text-lg font-semibold">!</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-slate-900">
+                  {normalizedUserNoticeTitle}
+                </h2>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                  {normalizedUserNoticeMessage}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissUserNotice}
+                className="shrink-0 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100"
+              >
+                关闭
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className={`${sectionSpacingClassName} ${sectionCardClassName}`}>
           <div className="flex items-center justify-between gap-3">

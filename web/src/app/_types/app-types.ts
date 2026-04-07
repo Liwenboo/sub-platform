@@ -48,6 +48,10 @@ export type AppDataState = {
   serviceLastCheckedAt: string | null;
   publishDomain: string;
   httpsEnabled: boolean;
+  userNoticeEnabled: boolean;
+  userNoticeTitle: string;
+  userNoticeMessage: string;
+  userNoticeUpdatedAt: string | null;
 };
 
 export type PersistedAppDataSnapshot = {
@@ -73,6 +77,10 @@ export type PersistedAppDataSnapshot = {
   serviceLastCheckedAt?: unknown;
   publishDomain?: unknown;
   httpsEnabled?: unknown;
+  userNoticeEnabled?: unknown;
+  userNoticeTitle?: unknown;
+  userNoticeMessage?: unknown;
+  userNoticeUpdatedAt?: unknown;
   service?: unknown;
   publish?: unknown;
   settings?: unknown;

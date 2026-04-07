@@ -72,6 +72,10 @@ export function mapRemoteAppDataDtoToDomainState(dto: RemoteAppDataDto): AppData
     serviceLastCheckedAt: dto.settings.serviceLastCheckedAt,
     publishDomain: dto.settings.publishDomain,
     httpsEnabled: dto.settings.httpsEnabled,
+    userNoticeEnabled: dto.settings.userNoticeEnabled,
+    userNoticeTitle: dto.settings.userNoticeTitle,
+    userNoticeMessage: dto.settings.userNoticeMessage,
+    userNoticeUpdatedAt: dto.settings.userNoticeUpdatedAt,
   });
 }
 
@@ -96,6 +100,10 @@ export function mapDomainStateToRemoteAppDataDto(state: AppDataState): RemoteApp
       serviceLastCheckedAt: normalizedState.serviceLastCheckedAt,
       publishDomain: normalizedState.publishDomain,
       httpsEnabled: normalizedState.httpsEnabled,
+      userNoticeEnabled: normalizedState.userNoticeEnabled,
+      userNoticeTitle: normalizedState.userNoticeTitle,
+      userNoticeMessage: normalizedState.userNoticeMessage,
+      userNoticeUpdatedAt: normalizedState.userNoticeUpdatedAt,
     }),
   };
 }
@@ -132,6 +140,10 @@ export function mapSettingsDtoToDomain(dto: RemoteSettingsDto): SystemSettingsSt
     serviceLastCheckedAt: dto.serviceLastCheckedAt,
     publishDomain: dto.publishDomain,
     httpsEnabled: dto.httpsEnabled,
+    userNoticeEnabled: dto.userNoticeEnabled,
+    userNoticeTitle: dto.userNoticeTitle,
+    userNoticeMessage: dto.userNoticeMessage,
+    userNoticeUpdatedAt: dto.userNoticeUpdatedAt,
   };
 }
 
@@ -145,6 +157,10 @@ export function mapSettingsToDto(
     serviceLastCheckedAt: settings.serviceLastCheckedAt,
     publishDomain: settings.publishDomain,
     httpsEnabled: settings.httpsEnabled,
+    userNoticeEnabled: settings.userNoticeEnabled,
+    userNoticeTitle: settings.userNoticeTitle,
+    userNoticeMessage: settings.userNoticeMessage,
+    userNoticeUpdatedAt: settings.userNoticeUpdatedAt,
   };
 }
 

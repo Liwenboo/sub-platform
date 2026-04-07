@@ -88,6 +88,10 @@ function mapStateToSettingsDto(state: AppDataState): RemoteSettingsDto {
     serviceLastCheckedAt: state.serviceLastCheckedAt,
     publishDomain: state.publishDomain,
     httpsEnabled: state.httpsEnabled,
+    userNoticeEnabled: state.userNoticeEnabled,
+    userNoticeTitle: state.userNoticeTitle,
+    userNoticeMessage: state.userNoticeMessage,
+    userNoticeUpdatedAt: state.userNoticeUpdatedAt,
   };
 }
 
@@ -136,6 +140,10 @@ function mapAppDataDtoToState(appData: RemoteAppDataDto): AppDataState {
     serviceLastCheckedAt: appData.settings.serviceLastCheckedAt,
     publishDomain: appData.settings.publishDomain,
     httpsEnabled: appData.settings.httpsEnabled,
+    userNoticeEnabled: appData.settings.userNoticeEnabled,
+    userNoticeTitle: appData.settings.userNoticeTitle,
+    userNoticeMessage: appData.settings.userNoticeMessage,
+    userNoticeUpdatedAt: appData.settings.userNoticeUpdatedAt,
   });
 }
 
@@ -200,6 +208,34 @@ function applySettingsPatch(
     nextState = appDataReducer(nextState, {
       type: "set_https_enabled",
       httpsEnabled: settings.httpsEnabled,
+    });
+  }
+
+  if (settings.userNoticeEnabled !== undefined) {
+    nextState = appDataReducer(nextState, {
+      type: "set_user_notice_enabled",
+      enabled: settings.userNoticeEnabled,
+    });
+  }
+
+  if (settings.userNoticeTitle !== undefined) {
+    nextState = appDataReducer(nextState, {
+      type: "set_user_notice_title",
+      title: settings.userNoticeTitle,
+    });
+  }
+
+  if (settings.userNoticeMessage !== undefined) {
+    nextState = appDataReducer(nextState, {
+      type: "set_user_notice_message",
+      message: settings.userNoticeMessage,
+    });
+  }
+
+  if (settings.userNoticeUpdatedAt !== undefined) {
+    nextState = appDataReducer(nextState, {
+      type: "set_user_notice_updated_at",
+      updatedAt: settings.userNoticeUpdatedAt,
     });
   }
 

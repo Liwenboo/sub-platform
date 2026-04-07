@@ -51,6 +51,10 @@ function getSystemSettingsData(state: AppDataState): SystemSettingsState {
     serviceLastCheckedAt: state.serviceLastCheckedAt,
     publishDomain: state.publishDomain,
     httpsEnabled: state.httpsEnabled,
+    userNoticeEnabled: state.userNoticeEnabled,
+    userNoticeTitle: state.userNoticeTitle,
+    userNoticeMessage: state.userNoticeMessage,
+    userNoticeUpdatedAt: state.userNoticeUpdatedAt,
   };
 }
 
@@ -313,6 +317,34 @@ export function createLocalAppDataRepository(
         nextState = reduceAppDataState(nextState, {
           type: "set_https_enabled",
           httpsEnabled: request.settings.httpsEnabled,
+        });
+      }
+
+      if (request.settings.userNoticeEnabled !== undefined) {
+        nextState = reduceAppDataState(nextState, {
+          type: "set_user_notice_enabled",
+          enabled: request.settings.userNoticeEnabled,
+        });
+      }
+
+      if (request.settings.userNoticeTitle !== undefined) {
+        nextState = reduceAppDataState(nextState, {
+          type: "set_user_notice_title",
+          title: request.settings.userNoticeTitle,
+        });
+      }
+
+      if (request.settings.userNoticeMessage !== undefined) {
+        nextState = reduceAppDataState(nextState, {
+          type: "set_user_notice_message",
+          message: request.settings.userNoticeMessage,
+        });
+      }
+
+      if (request.settings.userNoticeUpdatedAt !== undefined) {
+        nextState = reduceAppDataState(nextState, {
+          type: "set_user_notice_updated_at",
+          updatedAt: request.settings.userNoticeUpdatedAt,
         });
       }
 

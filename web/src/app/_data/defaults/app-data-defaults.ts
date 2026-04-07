@@ -18,6 +18,10 @@ export const APP_SETTINGS_DEFAULTS = {
   serviceLastCheckedAt: null as string | null,
   publishDomain: "sub.example.com",
   httpsEnabled: true,
+  userNoticeEnabled: false,
+  userNoticeTitle: "",
+  userNoticeMessage: "",
+  userNoticeUpdatedAt: null as string | null,
 };
 
 export const APP_INITIAL_SOURCES: SourceItem[] = [

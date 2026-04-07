@@ -393,6 +393,47 @@ export function validateSaveSettingsRequest(
     );
   }
 
+  if (
+    settings.userNoticeEnabled !== undefined &&
+    !isBoolean(settings.userNoticeEnabled)
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      '"userNoticeEnabled" must be a boolean.'
+    );
+  }
+
+  if (
+    settings.userNoticeTitle !== undefined &&
+    !isString(settings.userNoticeTitle)
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      '"userNoticeTitle" must be a string.'
+    );
+  }
+
+  if (
+    settings.userNoticeMessage !== undefined &&
+    !isString(settings.userNoticeMessage)
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      '"userNoticeMessage" must be a string.'
+    );
+  }
+
+  if (
+    settings.userNoticeUpdatedAt !== undefined &&
+    settings.userNoticeUpdatedAt !== null &&
+    !isString(settings.userNoticeUpdatedAt)
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      '"userNoticeUpdatedAt" must be a string or null.'
+    );
+  }
+
   return createValidationSuccess(request);
 }
 

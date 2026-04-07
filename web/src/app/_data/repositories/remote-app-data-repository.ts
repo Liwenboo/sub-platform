@@ -120,6 +120,10 @@ function getPlaceholderSettingsData(state: AppDataState): SystemSettingsState {
     serviceLastCheckedAt: state.serviceLastCheckedAt,
     publishDomain: state.publishDomain,
     httpsEnabled: state.httpsEnabled,
+    userNoticeEnabled: state.userNoticeEnabled,
+    userNoticeTitle: state.userNoticeTitle,
+    userNoticeMessage: state.userNoticeMessage,
+    userNoticeUpdatedAt: state.userNoticeUpdatedAt,
   };
 }
 
@@ -153,6 +157,10 @@ function mergeSettingsIntoState(
     serviceLastCheckedAt: settingsData.serviceLastCheckedAt,
     publishDomain: settingsData.publishDomain,
     httpsEnabled: settingsData.httpsEnabled,
+    userNoticeEnabled: settingsData.userNoticeEnabled,
+    userNoticeTitle: settingsData.userNoticeTitle,
+    userNoticeMessage: settingsData.userNoticeMessage,
+    userNoticeUpdatedAt: settingsData.userNoticeUpdatedAt,
   });
 }
 
