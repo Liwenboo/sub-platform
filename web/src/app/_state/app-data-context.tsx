@@ -40,6 +40,7 @@ type AppDataContextValue = AppDataState & {
   selectedOutputSourceIdsDraft: string[];
   setSelectedOutputSourceIdsDraft: (ids: string[]) => void;
   clearSelectedOutputSourceIdsDraft: () => void;
+  saveOutputConfigPatch: (patch: OutputConfigPatch) => Promise<AppDataMutationResult>;
   saveSettingsPatch: (patch: SystemSettingsPatch) => Promise<AppDataMutationResult>;
   refreshAppData: () => Promise<UserRole>;
   setRole: (role: UserRole) => Promise<AppDataMutationResult>;
@@ -337,6 +338,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       selectedOutputSourceIdsDraft,
       setSelectedOutputSourceIdsDraft,
       clearSelectedOutputSourceIdsDraft,
+      saveOutputConfigPatch: updateOutputConfig,
       saveSettingsPatch: saveSystemSettings,
       refreshAppData,
       setRole,
@@ -361,6 +363,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       selectedOutputSourceIdsDraft,
       setSelectedOutputSourceIdsDraft,
       clearSelectedOutputSourceIdsDraft,
+      updateOutputConfig,
       saveSystemSettings,
       refreshAppData,
       setRole,

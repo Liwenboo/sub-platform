@@ -37,6 +37,9 @@ function getOutputConfigData(state: AppDataState): OutputConfigState {
     defaultSourceId: state.defaultSourceId,
     defaultOutputFormat: state.defaultOutputFormat,
     urlTokenEnabled: state.urlTokenEnabled,
+    publishedSourceIds: state.publishedSourceIds,
+    publishedAt: state.publishedAt,
+    publishedVersionId: state.publishedVersionId,
   };
 }
 
@@ -239,6 +242,22 @@ export function createLocalAppDataRepository(
         nextState = reduceAppDataState(nextState, {
           type: "set_url_token_enabled",
           enabled: request.outputConfig.urlTokenEnabled,
+        });
+      }
+
+      if (
+        request.outputConfig.publishedSourceIds !== undefined ||
+        request.outputConfig.publishedAt !== undefined ||
+        request.outputConfig.publishedVersionId !== undefined
+      ) {
+        nextState = reduceAppDataState(nextState, {
+          type: "set_published_output_sources",
+          sourceIds:
+            request.outputConfig.publishedSourceIds ?? nextState.publishedSourceIds,
+          publishedAt:
+            request.outputConfig.publishedAt ?? nextState.publishedAt,
+          publishedVersionId:
+            request.outputConfig.publishedVersionId ?? nextState.publishedVersionId,
         });
       }
 

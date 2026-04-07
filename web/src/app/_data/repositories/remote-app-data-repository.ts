@@ -106,6 +106,9 @@ function getPlaceholderOutputConfigData(state: AppDataState): OutputConfigState 
     defaultSourceId: state.defaultSourceId,
     defaultOutputFormat: state.defaultOutputFormat,
     urlTokenEnabled: state.urlTokenEnabled,
+    publishedSourceIds: state.publishedSourceIds,
+    publishedAt: state.publishedAt,
+    publishedVersionId: state.publishedVersionId,
   };
 }
 
@@ -164,6 +167,9 @@ function mergeOutputConfigIntoState(
     defaultSourceId: outputConfigData.defaultSourceId,
     defaultOutputFormat: outputConfigData.defaultOutputFormat,
     urlTokenEnabled: outputConfigData.urlTokenEnabled,
+    publishedSourceIds: outputConfigData.publishedSourceIds,
+    publishedAt: outputConfigData.publishedAt,
+    publishedVersionId: outputConfigData.publishedVersionId,
   });
 }
 

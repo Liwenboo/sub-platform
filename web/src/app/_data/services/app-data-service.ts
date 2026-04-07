@@ -31,6 +31,12 @@ export type AppDataAction =
   | { type: "set_default_source"; id: string | null }
   | { type: "set_default_output_format"; format: OutputFormatId }
   | { type: "set_url_token_enabled"; enabled: boolean }
+  | {
+      type: "set_published_output_sources";
+      sourceIds: string[];
+      publishedAt: string | null;
+      publishedVersionId: number | null;
+    }
   | { type: "set_service_url"; serviceUrl: string }
   | { type: "set_api_path"; apiPath: string }
   | { type: "set_service_check_status"; status: ServiceCheckStatus }
@@ -151,6 +157,18 @@ function normalizeOptionalCheckedAt(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeOptionalFiniteNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.floor(value);
 }
 
 function pickFromRecord(record: Record<string, unknown>, keys: string[]): unknown {
@@ -333,6 +351,33 @@ function normalizeSources(value: unknown, fallbackSources: SourceItem[]): Source
   return normalized;
 }
 
+function normalizePublishedSourceIds(
+  value: unknown,
+  sources: SourceItem[]
+): string[] {
+  const fallbackIds = sources.map((source) => source.id);
+
+  if (!Array.isArray(value)) {
+    return fallbackIds;
+  }
+
+  const normalizedIds = Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .filter((id) => sources.some((source) => source.id === id))
+    )
+  );
+
+  if (normalizedIds.length === 0 && fallbackIds.length > 0) {
+    return fallbackIds;
+  }
+
+  return normalizedIds;
+}
+
 function resolveDefaultSourceId(
   sources: SourceItem[],
   defaultSourceId: string | null
@@ -359,6 +404,9 @@ function createBaseDefaultState(): AppDataState {
     role: APP_DEFAULT_ROLE,
     sources,
     defaultSourceId: sources[0]?.id ?? baseDefaultSourceId,
+    publishedSourceIds: sources.map((source) => source.id),
+    publishedAt: null,
+    publishedVersionId: null,
     ...APP_SETTINGS_DEFAULTS,
   };
 }
@@ -384,6 +432,10 @@ export function normalizeAppDataState(state: AppDataState): AppDataState {
   const sources = normalizeSources(state.sources, defaultState.sources);
   const nextDefaultSourceId =
     typeof state.defaultSourceId === "string" ? state.defaultSourceId : null;
+  const publishedSourceIds = normalizePublishedSourceIds(
+    state.publishedSourceIds,
+    sources
+  );
 
   return {
     role: normalizeRole(state.role) ?? defaultState.role,
@@ -394,6 +446,9 @@ export function normalizeAppDataState(state: AppDataState): AppDataState {
       defaultState.defaultOutputFormat,
     urlTokenEnabled:
       normalizeBoolean(state.urlTokenEnabled) ?? defaultState.urlTokenEnabled,
+    publishedSourceIds,
+    publishedAt: normalizeOptionalCheckedAt(state.publishedAt),
+    publishedVersionId: normalizeOptionalFiniteNumber(state.publishedVersionId),
     serviceUrl: normalizeNonEmptyString(state.serviceUrl, defaultState.serviceUrl),
     apiPath: normalizeNonEmptyString(state.apiPath, defaultState.apiPath),
     serviceCheckStatus:
@@ -468,6 +523,33 @@ export function hydrateAppDataState(
     nextState.urlTokenEnabled = urlTokenEnabled;
   }
 
+  const publishedSourceIds = pickFromRecords(
+    ["publishedSourceIds", "publishedSources", "publishedIds"],
+    [root, settings, output, publish]
+  );
+  if (publishedSourceIds !== undefined) {
+    nextState.publishedSourceIds = normalizePublishedSourceIds(
+      publishedSourceIds,
+      nextState.sources
+    );
+  }
+
+  const publishedAt = pickFromRecords(
+    ["publishedAt", "lastPublishedAt"],
+    [root, settings, output, publish]
+  );
+  if (typeof publishedAt === "string" || publishedAt === null) {
+    nextState.publishedAt = publishedAt;
+  }
+
+  const publishedVersionId = pickFromRecords(
+    ["publishedVersionId", "publishedVersion"],
+    [root, settings, output, publish]
+  );
+  if (typeof publishedVersionId === "number" || publishedVersionId === null) {
+    nextState.publishedVersionId = publishedVersionId;
+  }
+
   const serviceUrl = pickFromRecords(
     ["serviceUrl", "subconverterUrl", "url"],
     [root, settings, service]
@@ -539,6 +621,9 @@ export function buildPersistedSnapshot(
     defaultSourceId: normalizedState.defaultSourceId,
     defaultOutputFormat: normalizedState.defaultOutputFormat,
     urlTokenEnabled: normalizedState.urlTokenEnabled,
+    publishedSourceIds: normalizedState.publishedSourceIds,
+    publishedAt: normalizedState.publishedAt,
+    publishedVersionId: normalizedState.publishedVersionId,
     serviceUrl: normalizedState.serviceUrl,
     apiPath: normalizedState.apiPath,
     serviceCheckStatus: normalizedState.serviceCheckStatus,
@@ -611,6 +696,15 @@ export function appDataReducer(
     return normalizeAppDataState({ ...state, urlTokenEnabled: action.enabled });
   }
 
+  if (action.type === "set_published_output_sources") {
+    return normalizeAppDataState({
+      ...state,
+      publishedSourceIds: action.sourceIds,
+      publishedAt: action.publishedAt,
+      publishedVersionId: action.publishedVersionId,
+    });
+  }
+
   if (action.type === "set_service_url") {
     return normalizeAppDataState({
       ...state,
@@ -658,4 +752,15 @@ export function appDataReducer(
   }
 
   return normalizeAppDataState(state);
+}
+
+export function getPublishedSourceIds(state: Pick<AppDataState, "sources" | "publishedSourceIds">): string[] {
+  return normalizePublishedSourceIds(state.publishedSourceIds, state.sources);
+}
+
+export function getPublishedSources(
+  state: Pick<AppDataState, "sources" | "publishedSourceIds">
+): SourceItem[] {
+  const publishedSourceIds = getPublishedSourceIds(state);
+  return state.sources.filter((source) => publishedSourceIds.includes(source.id));
 }

@@ -63,6 +63,9 @@ export function mapRemoteAppDataDtoToDomainState(dto: RemoteAppDataDto): AppData
     defaultSourceId: dto.outputConfig.defaultSourceId,
     defaultOutputFormat: dto.outputConfig.defaultOutputFormat,
     urlTokenEnabled: dto.outputConfig.urlTokenEnabled,
+    publishedSourceIds: dto.outputConfig.publishedSourceIds,
+    publishedAt: dto.outputConfig.publishedAt,
+    publishedVersionId: dto.outputConfig.publishedVersionId,
     serviceUrl: dto.settings.serviceUrl,
     apiPath: dto.settings.apiPath,
     serviceCheckStatus: dto.settings.serviceCheckStatus,
@@ -82,6 +85,9 @@ export function mapDomainStateToRemoteAppDataDto(state: AppDataState): RemoteApp
       defaultSourceId: normalizedState.defaultSourceId,
       defaultOutputFormat: normalizedState.defaultOutputFormat,
       urlTokenEnabled: normalizedState.urlTokenEnabled,
+      publishedSourceIds: normalizedState.publishedSourceIds,
+      publishedAt: normalizedState.publishedAt,
+      publishedVersionId: normalizedState.publishedVersionId,
     }),
     settings: mapSettingsToDto({
       serviceUrl: normalizedState.serviceUrl,
@@ -99,6 +105,9 @@ export function mapOutputConfigDtoToDomain(dto: RemoteOutputConfigDto): OutputCo
     defaultSourceId: dto.defaultSourceId,
     defaultOutputFormat: dto.defaultOutputFormat,
     urlTokenEnabled: dto.urlTokenEnabled,
+    publishedSourceIds: dto.publishedSourceIds,
+    publishedAt: dto.publishedAt,
+    publishedVersionId: dto.publishedVersionId,
   };
 }
 
@@ -109,6 +118,9 @@ export function mapOutputConfigToDto(
     defaultSourceId: outputConfig.defaultSourceId,
     defaultOutputFormat: outputConfig.defaultOutputFormat,
     urlTokenEnabled: outputConfig.urlTokenEnabled,
+    publishedSourceIds: outputConfig.publishedSourceIds,
+    publishedAt: outputConfig.publishedAt,
+    publishedVersionId: outputConfig.publishedVersionId,
   };
 }
 

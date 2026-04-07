@@ -25,6 +25,9 @@ export type RemoteOutputConfigDto = {
   defaultSourceId: string | null;
   defaultOutputFormat: OutputFormatId;
   urlTokenEnabled: boolean;
+  publishedSourceIds: string[];
+  publishedAt: string | null;
+  publishedVersionId: number | null;
 };
 
 export type RemoteSettingsDto = {

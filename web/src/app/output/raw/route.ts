@@ -1,10 +1,11 @@
 import { cookies } from "next/headers";
-import { mockAppDataStore } from "../../../server/mock-data/app-data-store";
 import {
   AUTH_SESSION_COOKIE_NAME,
   getSessionFromToken,
   isViewerAnonymousAccessAllowed,
 } from "../../../server/auth/session";
+import { readStoredAppDataState } from "../../../server/mock-data/app-data-storage";
+import { getPublishedSources } from "../../_data/services/app-data-service";
 import {
   collectValidRawSourceEntries,
   isRawSourceAccessSignatureValid,
@@ -17,7 +18,7 @@ function encodeBase64Subscription(value: string): string {
   return Buffer.from(value, "utf8").toString("base64");
 }
 
-function getLogPreview(value: string, maxLength = 300): string {
+function getLogPreview(value: string, maxLength = 120): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
     return normalized;
@@ -25,6 +26,17 @@ function getLogPreview(value: string, maxLength = 300): string {
 
   return `${normalized.slice(0, maxLength)}...`;
 }
+
+type RawSourceAccessContext =
+  | {
+      ok: false;
+      response: Response;
+    }
+  | {
+      ok: true;
+      isAdmin: boolean;
+      hasSignedAccess: boolean;
+    };
 
 function textResponse(message: string, status: number, headers?: HeadersInit): Response {
   return new Response(message, {
@@ -37,44 +49,73 @@ function textResponse(message: string, status: number, headers?: HeadersInit): R
   });
 }
 
-async function canAccessRawSource(requestUrl: URL): Promise<Response | null> {
-  const appData = await mockAppDataStore.loadAppData();
+async function canAccessRawSource(
+  requestUrl: URL,
+  urlTokenEnabled: boolean
+): Promise<RawSourceAccessContext> {
   const token = requestUrl.searchParams.get("token")?.trim();
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
   const signature = requestUrl.searchParams.get("sig")?.trim() ?? null;
   const issuedAtSeconds = Number(requestUrl.searchParams.get("ts"));
-
-  if (isViewerAnonymousAccessAllowed()) {
-    return null;
-  }
-
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
   const session = getSessionFromToken(sessionToken);
 
-  if (session.authenticated) {
-    return null;
+  if (session.authenticated && session.role === "admin") {
+    return {
+      ok: true,
+      isAdmin: true,
+      hasSignedAccess: false,
+    };
   }
 
-  if (appData.outputConfig.urlTokenEnabled && token) {
-    return null;
+  if (isViewerAnonymousAccessAllowed()) {
+    return {
+      ok: true,
+      isAdmin: false,
+      hasSignedAccess: false,
+    };
+  }
+
+  if (session.authenticated) {
+    return {
+      ok: true,
+      isAdmin: false,
+      hasSignedAccess: false,
+    };
+  }
+
+  if (urlTokenEnabled && token) {
+    return {
+      ok: true,
+      isAdmin: false,
+      hasSignedAccess: false,
+    };
   }
 
   if (
     sourceParam &&
     isRawSourceAccessSignatureValid(sourceParam, issuedAtSeconds, signature)
   ) {
-    return null;
+    return {
+      ok: true,
+      isAdmin: false,
+      hasSignedAccess: true,
+    };
   }
 
-  return textResponse("Authentication or a valid token is required.", 401);
+  return {
+    ok: false,
+    response: textResponse("Authentication or a valid token is required.", 401),
+  };
 }
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const accessFailure = await canAccessRawSource(requestUrl);
-  if (accessFailure) {
-    return accessFailure;
+  const appState = await readStoredAppDataState();
+  const accessContext = await canAccessRawSource(requestUrl, appState.urlTokenEnabled);
+  if (!accessContext.ok) {
+    return accessContext.response;
   }
 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
@@ -87,8 +128,24 @@ export async function GET(request: Request) {
     return textResponse('Missing required "source" query parameter.', 400);
   }
 
-  const appData = await mockAppDataStore.loadAppData();
-  const selectedSourcesResult = resolveSelectedSources(sourceParam, appData.sources);
+  const usingPublishedSnapshot =
+    !accessContext.isAdmin && !accessContext.hasSignedAccess;
+  const availableSources = usingPublishedSnapshot
+    ? getPublishedSources(appState)
+    : appState.sources;
+  const selectedSourcesResult = usingPublishedSnapshot
+    ? {
+        ok: true as const,
+        missingIds: [] as string[],
+        sources: availableSources.filter((source) =>
+          sourceParam
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .includes(source.id)
+        ),
+      }
+    : resolveSelectedSources(sourceParam, availableSources);
 
   if (!selectedSourcesResult.ok) {
     if (selectedSourcesResult.missingIds.length > 0) {
@@ -101,11 +158,26 @@ export async function GET(request: Request) {
     return textResponse("No raw sources selected.", 400);
   }
 
+  if (selectedSourcesResult.sources.length === 0) {
+    return textResponse(
+      usingPublishedSnapshot
+        ? "No published raw sources matched the requested source ids."
+        : "No raw sources selected.",
+      400
+    );
+  }
+
   const rawSources = selectedSourcesResult.sources.filter(
     (source) => source.sourceType === "raw"
   );
   console.info(
-    `[output/raw] resolved_sources=${selectedSourcesResult.sources.length} raw_sources=${rawSources.length}`
+    `[output/raw] publish_state=${
+      usingPublishedSnapshot ? "published" : accessContext.hasSignedAccess ? "signed" : "draft"
+    } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
+      appState.publishedAt ?? "none"
+    } using_published_snapshot=${usingPublishedSnapshot} resolved_sources=${
+      selectedSourcesResult.sources.length
+    } raw_sources=${rawSources.length}`
   );
   const {
     entries,
@@ -133,7 +205,13 @@ export async function GET(request: Request) {
     ? `${encodeBase64Subscription(plainTextBody)}\n`
     : plainTextBody;
   console.info(
-    `[output/raw] returning source_count=${selectedSourcesResult.sources.length} entries=${entries.length} skipped=${skippedCount} alias_applied_count=${aliasAppliedCount} fallback_original_name_count=${fallbackOriginalNameCount} mode=${
+    `[output/raw] returning publish_state=${
+      usingPublishedSnapshot ? "published" : accessContext.hasSignedAccess ? "signed" : "draft"
+    } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
+      appState.publishedAt ?? "none"
+    } using_published_snapshot=${usingPublishedSnapshot} source_count=${
+      selectedSourcesResult.sources.length
+    } entries=${entries.length} skipped=${skippedCount} alias_applied_count=${aliasAppliedCount} fallback_original_name_count=${fallbackOriginalNameCount} mode=${
       useBase64Encoding ? "base64" : "plain"
     } length=${responseBody.length} body_preview="${getLogPreview(responseBody)}"`
   );

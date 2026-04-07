@@ -452,6 +452,62 @@ export function validateSaveOutputConfigRequest(
     );
   }
 
+  if (outputConfig.publishedSourceIds !== undefined) {
+    if (!Array.isArray(outputConfig.publishedSourceIds)) {
+      return createValidationFailure(
+        "validation_failed",
+        '"publishedSourceIds" must be a string array.'
+      );
+    }
+
+    const normalizedPublishedSourceIds = outputConfig.publishedSourceIds
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (normalizedPublishedSourceIds.length !== outputConfig.publishedSourceIds.length) {
+      return createValidationFailure(
+        "validation_failed",
+        '"publishedSourceIds" must be a string array.'
+      );
+    }
+
+    const missingPublishedSourceIds = normalizedPublishedSourceIds.filter(
+      (sourceId) => !currentState.sources.some((source) => source.id === sourceId)
+    );
+
+    if (missingPublishedSourceIds.length > 0) {
+      return createValidationFailure(
+        "source_not_found",
+        `Published source "${missingPublishedSourceIds[0]}" could not be found.`,
+        404
+      );
+    }
+  }
+
+  if (
+    outputConfig.publishedAt !== undefined &&
+    outputConfig.publishedAt !== null &&
+    !isString(outputConfig.publishedAt)
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      '"publishedAt" must be a string or null.'
+    );
+  }
+
+  if (
+    outputConfig.publishedVersionId !== undefined &&
+    outputConfig.publishedVersionId !== null &&
+    (typeof outputConfig.publishedVersionId !== "number" ||
+      !Number.isFinite(outputConfig.publishedVersionId))
+  ) {
+    return createValidationFailure(
+      "validation_failed",
+      '"publishedVersionId" must be a number or null.'
+    );
+  }
+
   return createValidationSuccess(request);
 }
 

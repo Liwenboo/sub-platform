@@ -74,6 +74,9 @@ function mapStateToOutputConfigDto(state: AppDataState): RemoteOutputConfigDto {
     defaultSourceId: state.defaultSourceId,
     defaultOutputFormat: state.defaultOutputFormat,
     urlTokenEnabled: state.urlTokenEnabled,
+    publishedSourceIds: state.publishedSourceIds,
+    publishedAt: state.publishedAt,
+    publishedVersionId: state.publishedVersionId,
   };
 }
 
@@ -124,6 +127,9 @@ function mapAppDataDtoToState(appData: RemoteAppDataDto): AppDataState {
     defaultSourceId: appData.outputConfig.defaultSourceId,
     defaultOutputFormat: appData.outputConfig.defaultOutputFormat,
     urlTokenEnabled: appData.outputConfig.urlTokenEnabled,
+    publishedSourceIds: appData.outputConfig.publishedSourceIds,
+    publishedAt: appData.outputConfig.publishedAt,
+    publishedVersionId: appData.outputConfig.publishedVersionId,
     serviceUrl: appData.settings.serviceUrl,
     apiPath: appData.settings.apiPath,
     serviceCheckStatus: appData.settings.serviceCheckStatus,
@@ -224,6 +230,20 @@ function applyOutputConfigPatch(
     nextState = appDataReducer(nextState, {
       type: "set_url_token_enabled",
       enabled: outputConfig.urlTokenEnabled,
+    });
+  }
+
+  if (
+    outputConfig.publishedSourceIds !== undefined ||
+    outputConfig.publishedAt !== undefined ||
+    outputConfig.publishedVersionId !== undefined
+  ) {
+    nextState = appDataReducer(nextState, {
+      type: "set_published_output_sources",
+      sourceIds: outputConfig.publishedSourceIds ?? nextState.publishedSourceIds,
+      publishedAt: outputConfig.publishedAt ?? nextState.publishedAt,
+      publishedVersionId:
+        outputConfig.publishedVersionId ?? nextState.publishedVersionId,
     });
   }
 

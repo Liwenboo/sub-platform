@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ViewerSubscriptionPage } from "../_components/viewer-subscription-page";
 import {
   buildInitialSelectedSourceIds,
@@ -177,10 +177,24 @@ function normalizeOutputName(value: string): string {
   return decoded;
 }
 
+function areSourceIdListsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const normalizedLeft = [...left].sort();
+  const normalizedRight = [...right].sort();
+
+  return normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
 export default function OutputsPage() {
   const {
     role,
     sources,
+    publishedSourceIds,
+    publishedAt,
+    publishedVersionId,
     defaultSourceId,
     defaultOutputFormat,
     httpsEnabled,
@@ -189,6 +203,8 @@ export default function OutputsPage() {
     hasSelectedOutputSourceIdsDraft,
     selectedOutputSourceIdsDraft,
     setSelectedOutputSourceIdsDraft,
+    clearSelectedOutputSourceIdsDraft,
+    saveOutputConfigPatch,
   } = useAppData();
   const canEditOutputParams = isAdminRole(role);
   const showPublishControls = canManageOutputsPublish(role);
@@ -230,16 +246,23 @@ export default function OutputsPage() {
     OUTPUT_DEFAULT_PUBLISH_NOTICE
   );
 
-  const publishStatusRef = useRef<OutputPublishStatus>(publishStatus);
-  const configSignatureRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    publishStatusRef.current = publishStatus;
-  }, [publishStatus]);
-
   useEffect(() => {
     setSelectedFormat(defaultOutputFormat);
   }, [defaultOutputFormat]);
+
+  const effectivePublishedSourceIds = useMemo(() => {
+    const validPublishedSourceIds = publishedSourceIds.filter((id) =>
+      sources.some((source) => source.id === id)
+    );
+
+    if (validPublishedSourceIds.length > 0 || sources.length === 0) {
+      return validPublishedSourceIds;
+    }
+
+    return sources.map((source) => source.id);
+  }, [publishedSourceIds, sources]);
+  const hasPublishedSnapshot =
+    publishedVersionId !== null || publishedAt !== null;
 
   const selectedSourceIds = useMemo(() => {
     const validDraftIds = selectedOutputSourceIdsDraft.filter((id) =>
@@ -250,9 +273,14 @@ export default function OutputsPage() {
       return validDraftIds;
     }
 
+    if (effectivePublishedSourceIds.length > 0) {
+      return effectivePublishedSourceIds;
+    }
+
     return buildInitialSelectedSourceIds(sources, defaultSourceId);
   }, [
     defaultSourceId,
+    effectivePublishedSourceIds,
     hasSelectedOutputSourceIdsDraft,
     selectedOutputSourceIdsDraft,
     sources,
@@ -275,6 +303,45 @@ export default function OutputsPage() {
     selectedOutputSourceIdsDraft,
     setSelectedOutputSourceIdsDraft,
     sources,
+  ]);
+
+  useEffect(() => {
+    const nextPublishStatus: OutputPublishStatus = areSourceIdListsEqual(
+      selectedSourceIds,
+      effectivePublishedSourceIds
+    )
+      ? hasPublishedSnapshot
+        ? "confirmed"
+        : "unpublished"
+      : "pending";
+
+    setPublishStatus((currentStatus) =>
+      currentStatus === nextPublishStatus ? currentStatus : nextPublishStatus
+    );
+
+    if (nextPublishStatus === "pending") {
+      setPublishNotice((currentNotice) =>
+        currentNotice === "confirmed" || currentNotice === "reset"
+          ? "invalidated"
+          : currentNotice
+      );
+      return;
+    }
+
+    if (nextPublishStatus === "confirmed") {
+      setPublishNotice((currentNotice) =>
+        currentNotice === "invalidated" ? "none" : currentNotice
+      );
+      return;
+    }
+
+    setPublishNotice((currentNotice) =>
+      currentNotice === "invalidated" ? "none" : currentNotice
+    );
+  }, [
+    effectivePublishedSourceIds,
+    hasPublishedSnapshot,
+    selectedSourceIds,
   ]);
 
   useEffect(() => {
@@ -320,53 +387,6 @@ export default function OutputsPage() {
   );
   const viewerResultHint =
     "\u5df2\u4e3a\u5f53\u524d\u9009\u9879\u751f\u6210\u8ba2\u9605\u94fe\u63a5\uff0c\u53ef\u76f4\u63a5\u590d\u5236\u5230\u5ba2\u6237\u7aef\u3002";
-
-  const configSignature = useMemo(
-    () =>
-      JSON.stringify({
-        selectedFormat,
-        selectedSourceIds: [...selectedSourceIds].sort(),
-        defaultSourceId,
-        defaultOutputFormat,
-        urlTokenEnabled,
-        publishDomain: normalizedDomain,
-        emojiEnabled,
-        udpEnabled,
-        tfoEnabled,
-        sortMode,
-        outputName: normalizedOutputName,
-      }),
-    [
-      selectedFormat,
-      selectedSourceIds,
-      defaultSourceId,
-      defaultOutputFormat,
-      urlTokenEnabled,
-      normalizedDomain,
-      emojiEnabled,
-      udpEnabled,
-      tfoEnabled,
-      sortMode,
-      normalizedOutputName,
-    ]
-  );
-
-  useEffect(() => {
-    if (configSignatureRef.current === null) {
-      configSignatureRef.current = configSignature;
-      return;
-    }
-
-    if (configSignatureRef.current !== configSignature) {
-      setPublishStatus("pending");
-      if (publishStatusRef.current === "confirmed") {
-        setPublishNotice("invalidated");
-      } else {
-        setPublishNotice("none");
-      }
-      configSignatureRef.current = configSignature;
-    }
-  }, [configSignature]);
 
   const outputUrl = useMemo(() => {
     return buildOutputLink({
@@ -425,22 +445,26 @@ export default function OutputsPage() {
     setGenerationVersion((prev) => prev + 1);
     setGeneratedAt(formatDateTime(new Date()));
     setCopyState("idle");
-
-    setPublishStatus("pending");
-    if (publishStatusRef.current === "confirmed") {
-      setPublishNotice("invalidated");
-    } else {
-      setPublishNotice("none");
-    }
   };
 
-  const handleConfirmPublish = () => {
-    setPublishStatus("confirmed");
+  const handleConfirmPublish = async () => {
+    const mutationResult = await saveOutputConfigPatch({
+      publishedSourceIds: selectedSourceIds,
+      publishedAt: formatDateTime(new Date()),
+      publishedVersionId: (publishedVersionId ?? 0) + 1,
+    });
+
+    if (!mutationResult.ok) {
+      setPublishNotice("invalidated");
+      return;
+    }
+
+    clearSelectedOutputSourceIdsDraft();
     setPublishNotice("confirmed");
   };
 
   const handleResetPublish = () => {
-    setPublishStatus("unpublished");
+    clearSelectedOutputSourceIdsDraft();
     setPublishNotice("reset");
   };
 

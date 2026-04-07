@@ -92,15 +92,39 @@ export function ViewerSubscriptionPage({
   const {
     role,
     sources,
+    publishedSourceIds,
+    publishedAt,
+    publishedVersionId,
     defaultSourceId,
     defaultOutputFormat,
     httpsEnabled,
     urlTokenEnabled,
     publishDomain,
   } = useAppData();
+  const publishedSources = useMemo(() => {
+    const sourceIds = new Set(
+      publishedSourceIds.filter((sourceId) =>
+        sources.some((source) => source.id === sourceId)
+      )
+    );
+
+    return sources.filter((source) => sourceIds.has(source.id));
+  }, [publishedSourceIds, sources]);
+  const effectiveDefaultSourceId = useMemo(() => {
+    if (
+      defaultSourceId &&
+      publishedSources.some((source) => source.id === defaultSourceId)
+    ) {
+      return defaultSourceId;
+    }
+
+    return publishedSources[0]?.id ?? null;
+  }, [defaultSourceId, publishedSources]);
+  const hasPublishedSnapshot =
+    publishedVersionId !== null || publishedAt !== null;
 
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>(() =>
-    buildInitialSelectedSourceIds(sources, defaultSourceId)
+    buildInitialSelectedSourceIds(publishedSources, effectiveDefaultSourceId)
   );
   const [selectedFormat, setSelectedFormat] =
     useState<OutputFormatId>(defaultOutputFormat);
@@ -113,16 +137,27 @@ export function ViewerSubscriptionPage({
   useEffect(() => {
     setSelectedSourceIds((prev) => {
       const validIds = prev.filter((id) =>
-        sources.some((source) => source.id === id)
+        publishedSources.some((source) => source.id === id)
       );
 
       if (validIds.length > 0) {
         return validIds;
       }
 
-      return buildInitialSelectedSourceIds(sources, defaultSourceId);
+      return buildInitialSelectedSourceIds(
+        publishedSources,
+        effectiveDefaultSourceId
+      );
     });
-  }, [sources, defaultSourceId]);
+  }, [publishedSources, effectiveDefaultSourceId]);
+
+  useEffect(() => {
+    console.info(
+      `[viewer] source_count=${publishedSources.length} published_version_id=${
+        publishedVersionId ?? "none"
+      } published_at=${publishedAt ?? "none"} using_published_snapshot=${hasPublishedSnapshot}`
+    );
+  }, [hasPublishedSnapshot, publishedAt, publishedSources.length, publishedVersionId]);
 
   const outputUrl = useMemo(() => {
     return buildOutputLink({
@@ -180,7 +215,7 @@ export function ViewerSubscriptionPage({
             </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {sources.map((source) => {
+            {publishedSources.map((source) => {
               const selected = selectedSourceIds.includes(source.id);
 
               return (

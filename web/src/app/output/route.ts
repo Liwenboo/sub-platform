@@ -3,19 +3,20 @@ import {
   getSourceDisplayValue,
   parseSourceInput,
 } from "../_data/services/source-entry-service";
-import { mockAppDataStore } from "../../server/mock-data/app-data-store";
 import {
   AUTH_SESSION_COOKIE_NAME,
   getSessionFromToken,
   isViewerAnonymousAccessAllowed,
 } from "../../server/auth/session";
 import type { OutputFormatId, SourceItem } from "../_types/app-types";
+import { getPublishedSources } from "../_data/services/app-data-service";
 import {
   collectValidRawSourceEntries,
   createRawSourceAccessSignature,
   getRequestOrigin,
   resolveSelectedSources,
 } from "./_lib/output-source-utils";
+import { readStoredAppDataState } from "../../server/mock-data/app-data-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +109,16 @@ type OutputRequestPlan =
       upstreamUrl: URL | null;
     };
 
+type OutputAccessContext =
+  | {
+      ok: false;
+      response: Response;
+    }
+  | {
+      ok: true;
+      isAdmin: boolean;
+    };
+
 type V2rayBypassResult = {
   ok: boolean;
   status: number;
@@ -120,6 +131,18 @@ type V2rayBypassResult = {
   skippedCount: number;
   errorMessage?: string;
 };
+
+function parseRequestedSourceIds(sourceParam: string): string[] {
+  return Array.from(
+    new Set(
+      sourceParam
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .filter((value) => value !== "none")
+    )
+  );
+}
 
 function normalizeSubscriptionText(value: string): string {
   return value.replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
@@ -305,7 +328,8 @@ function buildOutputRequestPlan(
   request: Request,
   serviceUrl: string,
   apiPath: string,
-  sources: Parameters<typeof resolveSelectedSources>[1]
+  sources: Parameters<typeof resolveSelectedSources>[1],
+  usingPublishedSnapshot: boolean
 ): OutputRequestPlan {
   const requestUrl = new URL(request.url);
   const format = requestUrl.searchParams.get("format")?.trim();
@@ -331,23 +355,47 @@ function buildOutputRequestPlan(
 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
   const requestedSourceCount = countRequestedSources(sourceParam);
-  const selectedSourcesResult = resolveSelectedSources(sourceParam, sources);
-  if (!selectedSourcesResult.ok) {
-    if (!sourceParam) {
-      return {
-        ok: false,
-        response: textResponse(
-          'Missing required "source" query parameter.',
-          400
-        ),
-      };
-    }
+  if (!sourceParam) {
+    return {
+      ok: false,
+      response: textResponse('Missing required "source" query parameter.', 400),
+    };
+  }
 
+  const requestedSourceIds = parseRequestedSourceIds(sourceParam);
+  if (requestedSourceIds.length === 0) {
+    return {
+      ok: false,
+      response: textResponse("No valid sources selected for output.", 400),
+    };
+  }
+
+  const selectedSourcesResult = usingPublishedSnapshot
+    ? {
+        ok: true as const,
+        missingIds: [] as string[],
+        sources: sources.filter((source) => requestedSourceIds.includes(source.id)),
+      }
+    : resolveSelectedSources(sourceParam, sources);
+
+  if (!selectedSourcesResult.ok) {
     return {
       ok: false,
       response: textResponse(
         `Unknown source id: ${selectedSourcesResult.missingIds.join(", ")}`,
         404
+      ),
+    };
+  }
+
+  if (selectedSourcesResult.sources.length === 0) {
+    return {
+      ok: false,
+      response: textResponse(
+        usingPublishedSnapshot
+          ? "No published sources matched the requested source ids."
+          : "No valid sources selected for output.",
+        400
       ),
     };
   }
@@ -449,46 +497,70 @@ function buildOutputRequestPlan(
   };
 }
 
-async function canAccessOutput(requestUrl: URL): Promise<Response | null> {
-  const appData = await mockAppDataStore.loadAppData();
+async function canAccessOutput(
+  requestUrl: URL,
+  urlTokenEnabled: boolean
+): Promise<OutputAccessContext> {
   const token = requestUrl.searchParams.get("token")?.trim();
-
-  if (isViewerAnonymousAccessAllowed()) {
-    return null;
-  }
-
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
   const session = getSessionFromToken(sessionToken);
 
+  if (session.authenticated && session.role === "admin") {
+    return {
+      ok: true,
+      isAdmin: true,
+    };
+  }
+
+  if (isViewerAnonymousAccessAllowed()) {
+    return {
+      ok: true,
+      isAdmin: false,
+    };
+  }
+
   if (session.authenticated) {
-    return null;
+    return {
+      ok: true,
+      isAdmin: false,
+    };
   }
 
-  if (appData.outputConfig.urlTokenEnabled && token) {
-    return null;
+  if (urlTokenEnabled && token) {
+    return {
+      ok: true,
+      isAdmin: false,
+    };
   }
 
-  return textResponse(
-    "Authentication or a valid token is required for subscription output access.",
-    401
-  );
+  return {
+    ok: false,
+    response: textResponse(
+      "Authentication or a valid token is required for subscription output access.",
+      401
+    ),
+  };
 }
 
 async function handleOutputRequest(request: Request, headOnly = false): Promise<Response> {
   const requestUrl = new URL(request.url);
-  const accessFailure = await canAccessOutput(requestUrl);
-  if (accessFailure) {
-    return accessFailure;
+  const appState = await readStoredAppDataState();
+  const accessContext = await canAccessOutput(requestUrl, appState.urlTokenEnabled);
+  if (!accessContext.ok) {
+    return accessContext.response;
   }
 
-  const appData = await mockAppDataStore.loadAppData();
-  const serviceUrl = appData.settings.serviceUrl.trim();
+  const publishedSources = getPublishedSources(appState);
+  const usingPublishedSnapshot = !accessContext.isAdmin;
+  const effectiveSources = usingPublishedSnapshot ? publishedSources : appState.sources;
+  const serviceUrl = appState.serviceUrl.trim();
   const outputPlan = buildOutputRequestPlan(
     request,
     serviceUrl,
-    appData.settings.apiPath,
-    appData.sources
+    appState.apiPath,
+    effectiveSources,
+    usingPublishedSnapshot
   );
   if (!outputPlan.ok) {
     return outputPlan.response;
@@ -499,7 +571,17 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   }
 
   console.info(
-    `[output] request format=${outputPlan.format} target=${outputPlan.target} requested_sources=${outputPlan.requestedSourceCount} resolved_sources=${outputPlan.resolvedSourceCount} remote_sources=${outputPlan.remoteSourceCount} raw_sources=${outputPlan.rawSourceCount} use_subconverter=${outputPlan.useSubconverter} raw_bypass=${outputPlan.useRawBypass}`
+    `[output] request format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+      usingPublishedSnapshot ? "published" : "draft"
+    } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
+      appState.publishedAt ?? "none"
+    } using_published_snapshot=${usingPublishedSnapshot} requested_sources=${
+      outputPlan.requestedSourceCount
+    } resolved_sources=${outputPlan.resolvedSourceCount} remote_sources=${
+      outputPlan.remoteSourceCount
+    } raw_sources=${outputPlan.rawSourceCount} use_subconverter=${
+      outputPlan.useSubconverter
+    } raw_bypass=${outputPlan.useRawBypass}`
   );
 
   if (outputPlan.useRawBypass) {
@@ -514,7 +596,19 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
     if (!bypassResult.ok) {
       console.error(
-        `[output] response format=${outputPlan.format} target=${outputPlan.target} source_count=${outputPlan.resolvedSourceCount} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${bypassResult.aliasAppliedCount} fallback_original_name_count=${bypassResult.fallbackOriginalNameCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+        `[output] response format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+          usingPublishedSnapshot ? "published" : "draft"
+        } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
+          appState.publishedAt ?? "none"
+        } using_published_snapshot=${usingPublishedSnapshot} source_count=${
+          outputPlan.resolvedSourceCount
+        } raw_sources=${outputPlan.rawSourceCount} remote_sources=${
+          outputPlan.remoteSourceCount
+        } fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${
+          bypassResult.aliasAppliedCount
+        } fallback_original_name_count=${
+          bypassResult.fallbackOriginalNameCount
+        } remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
           bypassResult.errorMessage ?? ""
         )}"`
       );
@@ -523,7 +617,19 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
     const responseBody = bypassResult.responseBody ?? "";
     console.info(
-      `[output] response format=${outputPlan.format} target=${outputPlan.target} source_count=${outputPlan.resolvedSourceCount} raw_sources=${outputPlan.rawSourceCount} remote_sources=${outputPlan.remoteSourceCount} fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${bypassResult.aliasAppliedCount} fallback_original_name_count=${bypassResult.fallbackOriginalNameCount} remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+      `[output] response format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+        usingPublishedSnapshot ? "published" : "draft"
+      } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
+        appState.publishedAt ?? "none"
+      } using_published_snapshot=${usingPublishedSnapshot} source_count=${
+        outputPlan.resolvedSourceCount
+      } raw_sources=${outputPlan.rawSourceCount} remote_sources=${
+        outputPlan.remoteSourceCount
+      } fetched_remote_count=${bypassResult.fetchedRemoteCount} alias_applied_count=${
+        bypassResult.aliasAppliedCount
+      } fallback_original_name_count=${
+        bypassResult.fallbackOriginalNameCount
+      } remote_fetch_status="${remoteFetchStatusValue}" raw_bypass=true upstream_status=none body_preview="${getLogPreview(
         responseBody
       )}"`
     );
@@ -582,7 +688,13 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
   const upstreamBody = await upstreamResponse.text();
   console.info(
-    `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_bypass=false upstream_status=${upstreamResponse.status} body_preview="${getLogPreview(
+    `[output] response format=${outputPlan.format} target=${outputPlan.target} publish_state=${
+      usingPublishedSnapshot ? "published" : "draft"
+    } published_version_id=${appState.publishedVersionId ?? "none"} published_at=${
+      appState.publishedAt ?? "none"
+    } using_published_snapshot=${usingPublishedSnapshot} resolved_source_count=${
+      outputPlan.resolvedSourceCount
+    } raw_bypass=false upstream_status=${upstreamResponse.status} body_preview="${getLogPreview(
       upstreamBody
     )}"`
   );

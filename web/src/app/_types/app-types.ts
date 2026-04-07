@@ -39,6 +39,9 @@ export type AppDataState = {
   defaultSourceId: string | null;
   defaultOutputFormat: OutputFormatId;
   urlTokenEnabled: boolean;
+  publishedSourceIds: string[];
+  publishedAt: string | null;
+  publishedVersionId: number | null;
   serviceUrl: string;
   apiPath: string;
   serviceCheckStatus: ServiceCheckStatus;
@@ -60,6 +63,9 @@ export type PersistedAppDataSnapshot = {
   defaultOutputFormat?: unknown;
   outputFormat?: unknown;
   urlTokenEnabled?: unknown;
+  publishedSourceIds?: unknown;
+  publishedAt?: unknown;
+  publishedVersionId?: unknown;
   enableUrlToken?: unknown;
   serviceUrl?: unknown;
   apiPath?: unknown;
