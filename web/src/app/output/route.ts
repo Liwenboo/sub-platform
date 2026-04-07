@@ -8,6 +8,7 @@ import {
 } from "../../server/auth/session";
 import type { OutputFormatId } from "../_types/app-types";
 import {
+  collectValidRawSourceEntries,
   createRawSourceAccessSignature,
   getRequestOrigin,
   resolveSelectedSources,
@@ -22,21 +23,23 @@ const OUTPUT_FORMAT_TARGET_MAP: Record<OutputFormatId, string> = {
   "sing-box": "singbox",
 };
 
+const RAW_BYPASS_FORMATS = new Set<OutputFormatId>(["v2ray"]);
+
 const FORWARDED_QUERY_KEYS = new Set([
   "emoji",
   "udp",
   "tfo",
 ]);
 
-function maskSensitiveUrlForLog(input: string): string {
+function maskSensitiveValueForLog(input: string): string {
   return input.replace(
-    /([?&](?:token|sig)=)[^&]*/gi,
+    /([?&](?:token|sig)=)[^&\s"]*/gi,
     "$1***"
   );
 }
 
-function getLogPreview(value: string, maxLength = 400): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
+function getLogPreview(value: string, maxLength = 120): string {
+  const normalized = maskSensitiveValueForLog(value).replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) {
     return normalized;
   }
@@ -69,17 +72,50 @@ function normalizeApiPath(apiPath: string): string {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
-function buildUpstreamUrl(
+function encodeBase64Subscription(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
+}
+
+function countRequestedSources(sourceParam: string): number {
+  return sourceParam
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => value !== "none").length;
+}
+
+type OutputRequestPlan =
+  | {
+      ok: false;
+      response: Response;
+    }
+  | {
+      ok: true;
+      format: OutputFormatId;
+      target: string;
+      requestedSourceCount: number;
+      resolvedSourceCount: number;
+      remoteSourceCount: number;
+      rawSourceCount: number;
+      useSubconverter: boolean;
+      useRawBypass: boolean;
+      rawSourceUrl: string | null;
+      upstreamUrl: URL | null;
+      responseBody: string | null;
+      responseHeaders: HeadersInit | null;
+    };
+
+function buildOutputRequestPlan(
   request: Request,
   serviceUrl: string,
   apiPath: string,
   sources: Parameters<typeof resolveSelectedSources>[1]
-) {
+): OutputRequestPlan {
   const requestUrl = new URL(request.url);
   const format = requestUrl.searchParams.get("format")?.trim();
   if (!format) {
     return {
-      ok: false as const,
+      ok: false,
       response: textResponse(
         'Missing required "format" query parameter.',
         400
@@ -89,7 +125,7 @@ function buildUpstreamUrl(
 
   if (!Object.prototype.hasOwnProperty.call(OUTPUT_FORMAT_TARGET_MAP, format)) {
     return {
-      ok: false as const,
+      ok: false,
       response: textResponse(
         `Unsupported output format: ${format}`,
         400
@@ -98,11 +134,12 @@ function buildUpstreamUrl(
   }
 
   const sourceParam = requestUrl.searchParams.get("source")?.trim() ?? "";
+  const requestedSourceCount = countRequestedSources(sourceParam);
   const selectedSourcesResult = resolveSelectedSources(sourceParam, sources);
   if (!selectedSourcesResult.ok) {
     if (!sourceParam) {
       return {
-        ok: false as const,
+        ok: false,
         response: textResponse(
           'Missing required "source" query parameter.',
           400
@@ -111,7 +148,7 @@ function buildUpstreamUrl(
     }
 
     return {
-      ok: false as const,
+      ok: false,
       response: textResponse(
         `Unknown source id: ${selectedSourcesResult.missingIds.join(", ")}`,
         404
@@ -128,6 +165,60 @@ function buildUpstreamUrl(
   const selectedSourceValues = remoteSources.map((source) =>
     getSourceDisplayValue(source)
   );
+  const target = OUTPUT_FORMAT_TARGET_MAP[format as OutputFormatId];
+
+  if (RAW_BYPASS_FORMATS.has(format as OutputFormatId)) {
+    if (remoteSources.length > 0) {
+      console.warn(
+        `[output] raw bypass rejected target=${target} requested_sources=${requestedSourceCount} resolved_sources=${selectedSourcesResult.sources.length} remote_sources=${remoteSources.length} raw_sources=${rawSources.length}`
+      );
+      return {
+        ok: false,
+        response: textResponse(
+          "V2Ray output bypass only supports raw node sources.",
+          400
+        ),
+      };
+    }
+
+    const { entries, skippedCount } = collectValidRawSourceEntries(rawSources);
+    if (entries.length === 0) {
+      console.warn(
+        `[output] raw bypass found no valid entries target=${target} requested_sources=${requestedSourceCount} resolved_sources=${selectedSourcesResult.sources.length} remote_sources=${remoteSources.length} raw_sources=${rawSources.length}`
+      );
+      return {
+        ok: false,
+        response: textResponse("No valid raw source entries found.", 400),
+      };
+    }
+
+    const plainTextBody = `${entries.join("\n")}\n`;
+    const responseBody = `${encodeBase64Subscription(plainTextBody)}\n`;
+    const responseHeaders = new Headers({
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    });
+
+    if (skippedCount > 0) {
+      responseHeaders.set("x-sub-platform-skipped-lines", String(skippedCount));
+    }
+
+    return {
+      ok: true,
+      format: format as OutputFormatId,
+      target,
+      requestedSourceCount,
+      resolvedSourceCount: selectedSourcesResult.sources.length,
+      remoteSourceCount: remoteSources.length,
+      rawSourceCount: rawSources.length,
+      useSubconverter: false,
+      useRawBypass: true,
+      rawSourceUrl: null,
+      upstreamUrl: null,
+      responseBody,
+      responseHeaders,
+    };
+  }
 
   if (rawSources.length > 0) {
     const rawSourceParam = rawSources.map((source) => source.id).join(",");
@@ -155,7 +246,7 @@ function buildUpstreamUrl(
 
   if (selectedSourceValues.length === 0) {
     return {
-      ok: false as const,
+      ok: false,
       response: textResponse("No valid sources selected for output.", 400),
     };
   }
@@ -164,10 +255,7 @@ function buildUpstreamUrl(
     normalizeApiPath(apiPath),
     serviceUrl.endsWith("/") ? serviceUrl : `${serviceUrl}/`
   );
-  upstreamUrl.searchParams.set(
-    "target",
-    OUTPUT_FORMAT_TARGET_MAP[format as OutputFormatId]
-  );
+  upstreamUrl.searchParams.set("target", target);
   upstreamUrl.searchParams.set("url", selectedSourceValues.join("|"));
 
   for (const [key, value] of requestUrl.searchParams.entries()) {
@@ -181,12 +269,22 @@ function buildUpstreamUrl(
   }
 
   return {
-    ok: true as const,
-    data: upstreamUrl,
+    ok: true,
+    format: format as OutputFormatId,
+    target,
+    requestedSourceCount,
+    resolvedSourceCount: selectedSourcesResult.sources.length,
+    remoteSourceCount: remoteSources.length,
+    rawSourceCount: rawSources.length,
+    useSubconverter: true,
+    useRawBypass: false,
+    upstreamUrl,
     rawSourceUrl:
       rawSources.length > 0
         ? selectedSourceValues[selectedSourceValues.length - 1] ?? null
         : null,
+    responseBody: null,
+    responseHeaders: null,
   };
 }
 
@@ -225,24 +323,44 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
 
   const appData = await mockAppDataStore.loadAppData();
   const serviceUrl = appData.settings.serviceUrl.trim();
-
-  if (!serviceUrl) {
-    return textResponse("Subconverter service URL is not configured.", 500);
-  }
-
-  const upstreamUrlResult = buildUpstreamUrl(
+  const outputPlan = buildOutputRequestPlan(
     request,
     serviceUrl,
     appData.settings.apiPath,
     appData.sources
   );
-  if (!upstreamUrlResult.ok) {
-    return upstreamUrlResult.response;
+  if (!outputPlan.ok) {
+    return outputPlan.response;
   }
 
-  if (upstreamUrlResult.rawSourceUrl) {
+  if (outputPlan.useSubconverter && !serviceUrl) {
+    return textResponse("Subconverter service URL is not configured.", 500);
+  }
+
+  console.info(
+    `[output] request format=${outputPlan.format} target=${outputPlan.target} requested_sources=${outputPlan.requestedSourceCount} resolved_sources=${outputPlan.resolvedSourceCount} remote_sources=${outputPlan.remoteSourceCount} raw_sources=${outputPlan.rawSourceCount} use_subconverter=${outputPlan.useSubconverter} raw_bypass=${outputPlan.useRawBypass}`
+  );
+
+  if (outputPlan.useRawBypass) {
+    const responseBody = outputPlan.responseBody ?? "";
+    console.info(
+      `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_bypass=true upstream_status=none body_preview="${getLogPreview(
+        responseBody
+      )}"`
+    );
+
+    return new Response(headOnly ? null : responseBody, {
+      status: 200,
+      headers: outputPlan.responseHeaders ?? {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
+
+  if (outputPlan.rawSourceUrl) {
     try {
-      const rawPreviewResponse = await fetch(upstreamUrlResult.rawSourceUrl, {
+      const rawPreviewResponse = await fetch(outputPlan.rawSourceUrl, {
         method: "GET",
         cache: "no-store",
         headers: {
@@ -251,26 +369,28 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
       });
       const rawPreviewBody = await rawPreviewResponse.text();
       console.info(
-        `[output] raw source probe mode=base64-remote-url status=${rawPreviewResponse.status} length=${rawPreviewBody.length} url=${maskSensitiveUrlForLog(
-          upstreamUrlResult.rawSourceUrl
+        `[output] raw source probe mode=base64-remote-url status=${rawPreviewResponse.status} length=${rawPreviewBody.length} url=${maskSensitiveValueForLog(
+          outputPlan.rawSourceUrl
         )} body_preview="${getLogPreview(rawPreviewBody)}"`
       );
     } catch {
       console.error(
-        `[output] failed to prefetch raw source url ${maskSensitiveUrlForLog(
-          upstreamUrlResult.rawSourceUrl
+        `[output] failed to prefetch raw source url ${maskSensitiveValueForLog(
+          outputPlan.rawSourceUrl
         )}`
       );
     }
   }
 
   let upstreamResponse: Response;
-  const maskedUpstreamUrl = maskSensitiveUrlForLog(upstreamUrlResult.data.toString());
+  const maskedUpstreamUrl = maskSensitiveValueForLog(
+    outputPlan.upstreamUrl?.toString() ?? ""
+  );
   console.info(
-    `[output] proxying request to subconverter mode=base64-remote-url: ${maskedUpstreamUrl}`
+    `[output] proxying request to subconverter format=${outputPlan.format} target=${outputPlan.target} mode=base64-remote-url url=${maskedUpstreamUrl}`
   );
   try {
-    upstreamResponse = await fetch(upstreamUrlResult.data, {
+    upstreamResponse = await fetch(outputPlan.upstreamUrl!, {
       method: "GET",
       cache: "no-store",
       headers: {
@@ -278,12 +398,15 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
       },
     });
   } catch {
+    console.error(
+      `[output] subconverter request failed format=${outputPlan.format} target=${outputPlan.target} upstream_status=unreachable`
+    );
     return textResponse("Subconverter upstream is unreachable.", 502);
   }
 
   const upstreamBody = await upstreamResponse.text();
   console.info(
-    `[output] subconverter response status=${upstreamResponse.status} body_preview="${getLogPreview(
+    `[output] response format=${outputPlan.format} target=${outputPlan.target} raw_bypass=false upstream_status=${upstreamResponse.status} body_preview="${getLogPreview(
       upstreamBody
     )}"`
   );
