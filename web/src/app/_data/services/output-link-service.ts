@@ -47,6 +47,7 @@ export function buildInitialSelectedSourceIds(
 export function buildOutputLink(params: OutputLinkBuildParams): string {
   const normalizedDomain = normalizePublishDomain(params.publishDomain);
   const protocol = params.httpsEnabled ? "https" : "http";
+  const normalizedOutputName = params.outputName?.trim() ?? "";
   const query = new URLSearchParams();
   query.set("format", params.selectedFormat);
 
@@ -81,5 +82,13 @@ export function buildOutputLink(params: OutputLinkBuildParams): string {
     query.set("tfo", params.tfoEnabled ? "true" : "false");
   }
 
-  return `${protocol}://${normalizedDomain}/output?${query.toString()}`;
+  if (normalizedOutputName) {
+    query.set("name", normalizedOutputName);
+  }
+
+  const outputPath = normalizedOutputName
+    ? `/output/${encodeURIComponent(normalizedOutputName)}`
+    : "/output";
+
+  return `${protocol}://${normalizedDomain}${outputPath}?${query.toString()}`;
 }

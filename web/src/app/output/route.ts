@@ -29,13 +29,16 @@ const OUTPUT_FORMAT_TARGET_MAP: Record<OutputFormatId, string> = {
   "sing-box": "singbox",
 };
 
+const OUTPUT_FORMAT_EXTENSION_MAP: Record<OutputFormatId, string> = {
+  clash: "yaml",
+  "clash-meta": "yaml",
+  v2ray: "txt",
+  "sing-box": "json",
+};
+
 const RAW_BYPASS_FORMATS = new Set<OutputFormatId>(["v2ray"]);
 
-const FORWARDED_QUERY_KEYS = new Set([
-  "emoji",
-  "udp",
-  "tfo",
-]);
+const FORWARDED_QUERY_KEYS = new Set(["emoji", "udp", "tfo"]);
 
 function maskSensitiveValueForLog(input: string): string {
   return input.replace(
@@ -78,6 +81,35 @@ function normalizeApiPath(apiPath: string): string {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
+function sanitizeFilenameComponent(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "_").slice(0, 120);
+}
+
+function getRequestedOutputName(requestUrl: URL): string {
+  const queryName = sanitizeFilenameComponent(
+    requestUrl.searchParams.get("name")?.trim() ?? ""
+  );
+  if (queryName) {
+    return queryName;
+  }
+
+  const pathnameMatch = requestUrl.pathname.match(/^\/output\/([^/]+)$/);
+  if (!pathnameMatch) {
+    return "";
+  }
+
+  try {
+    return sanitizeFilenameComponent(decodeURIComponent(pathnameMatch[1] ?? ""));
+  } catch {
+    return "";
+  }
+}
+
 function encodeBase64Subscription(value: string): string {
   return Buffer.from(value, "utf8").toString("base64");
 }
@@ -113,7 +145,12 @@ type OutputAccessContext =
       ok: true;
       isAdmin: boolean;
       accessScope: "admin_full" | "viewer" | "public";
-      tokenType: "session_admin" | "admin_token" | "viewer_token" | "viewer_session" | "none";
+      tokenType:
+        | "session_admin"
+        | "admin_token"
+        | "viewer_token"
+        | "viewer_session"
+        | "none";
       signatureType: "none";
     };
 
@@ -335,20 +372,14 @@ function buildOutputRequestPlan(
   if (!format) {
     return {
       ok: false,
-      response: textResponse(
-        'Missing required "format" query parameter.',
-        400
-      ),
+      response: textResponse('Missing required "format" query parameter.', 400),
     };
   }
 
   if (!Object.prototype.hasOwnProperty.call(OUTPUT_FORMAT_TARGET_MAP, format)) {
     return {
       ok: false,
-      response: textResponse(
-        `Unsupported output format: ${format}`,
-        400
-      ),
+      response: textResponse(`Unsupported output format: ${format}`, 400),
     };
   }
 
@@ -589,6 +620,7 @@ async function canAccessOutput(
 
 async function handleOutputRequest(request: Request, headOnly = false): Promise<Response> {
   const requestUrl = new URL(request.url);
+  const requestedOutputName = getRequestedOutputName(requestUrl);
   const appState = await readStoredAppDataState();
   const accessContext = await canAccessOutput(requestUrl, appState.urlTokenEnabled);
   if (!accessContext.ok) {
@@ -673,7 +705,10 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
           bypassResult.errorMessage ?? ""
         )}"`
       );
-      return textResponse(bypassResult.errorMessage ?? "Invalid subscription content.", bypassResult.status);
+      return textResponse(
+        bypassResult.errorMessage ?? "Invalid subscription content.",
+        bypassResult.status
+      );
     }
 
     const responseBody = bypassResult.responseBody ?? "";
@@ -703,9 +738,20 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
       )}"`
     );
 
+    const responseHeaders = new Headers(bypassResult.responseHeaders);
+    if (requestedOutputName) {
+      const extension = OUTPUT_FORMAT_EXTENSION_MAP[outputPlan.format] || "txt";
+      responseHeaders.set(
+        "content-disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(
+          `${requestedOutputName}.${extension}`
+        )}`
+      );
+    }
+
     return new Response(headOnly ? null : responseBody, {
       status: bypassResult.status,
-      headers: bypassResult.responseHeaders,
+      headers: responseHeaders,
     });
   }
 
@@ -792,7 +838,15 @@ async function handleOutputRequest(request: Request, headOnly = false): Promise<
   });
 
   const contentDisposition = upstreamResponse.headers.get("content-disposition");
-  if (contentDisposition) {
+  if (requestedOutputName) {
+    const extension = OUTPUT_FORMAT_EXTENSION_MAP[outputPlan.format] || "txt";
+    responseHeaders.set(
+      "content-disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(
+        `${requestedOutputName}.${extension}`
+      )}`
+    );
+  } else if (contentDisposition) {
     responseHeaders.set("content-disposition", contentDisposition);
   }
 
